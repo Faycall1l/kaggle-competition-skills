@@ -15,6 +15,7 @@ from comp_submit import (
     leaderboard,
     normalize_status,
     poll,
+    ref_by_description,
     send,
     submission_state,
     submit,
@@ -146,6 +147,32 @@ def test_send_failure(monkeypatch):
 def test_send_ref_parsed(monkeypatch):
     monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, "Submission ref: abc-123", ""))
     assert send("c", "f.csv", "m", None, None) == "abc-123"
+
+
+def test_send_falls_back_to_description(monkeypatch):
+    rows = json.dumps([{"ref": 11, "description": "old"}, {"ref": 22, "description": "m"}])
+    calls = iter([(0, "uploaded ok", ""), (0, rows, "")])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: next(calls))
+    assert send("c", "f.csv", "m", None, None) == "22"
+
+
+def test_send_no_ref_no_row(monkeypatch):
+    calls = iter([(0, "uploaded ok", ""), (0, "[]", "")])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: next(calls))
+    with pytest.raises(BlockedError):
+        send("c", "f.csv", "m", None, None)
+
+
+def test_ref_by_description_newest(monkeypatch):
+    rows = json.dumps(
+        [
+            {"ref": 1, "description": "m", "date": "2026-01-01"},
+            {"ref": 2, "description": "m", "date": "2026-01-02"},
+            {"ref": 3, "description": "other", "date": "2026-01-03"},
+        ]
+    )
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, rows, ""))
+    assert ref_by_description("c", "m") == "2"
 
 
 def test_poll_complete(monkeypatch):

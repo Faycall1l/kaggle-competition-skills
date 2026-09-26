@@ -113,7 +113,12 @@ def check_kernel_submittable(kernel: str) -> None:
 
 
 def send(competition: str, file: str, message: str, kernel: str | None, version: str | None) -> str:
-    """Run the CLI submit. Returns the submission ref; 403 on code comps degrades to browser fallback."""
+    """Run the CLI submit. Returns the submission ref.
+
+    Upstream main prints `Submission ref: <ref>`; pip releases (e.g. 2.2.4) do
+    not. Fall back to matching the unique description message in the
+    submissions list. Never returns unparseable output as a ref.
+    """
     cmd = ["competitions", "submit", competition, "-f", file, "-m", message]
     if kernel:
         cmd += ["-k", kernel, "-v", str(version)]
@@ -128,8 +133,29 @@ def send(competition: str, file: str, message: str, kernel: str | None, version:
         raise BlockedError(f"submit failed: {combined[-300:]}", "inspect the message and retry")
     for line in combined.splitlines():
         if "Submission ref:" in line:
-            return line.split("Submission ref:")[-1].strip()
-    return combined[-200:]
+            ref = line.split("Submission ref:")[-1].strip()
+            if ref:
+                return ref
+    log("CLI did not print a submission ref; matching by description message")
+    return ref_by_description(competition, message)
+
+
+def ref_by_description(competition: str, message: str) -> str:
+    """Find the newest submission row with an exact description match."""
+    code, out, err = run_cli(["competitions", "submissions", "-c", competition, "--format", "json"], timeout=120)
+    if code != 0:
+        raise BlockedError(f"submissions lookup failed: {(err or out).strip()[-200:]}", "verify competition access")
+    try:
+        rows = extract_json(out)
+    except ValueError:
+        raise BlockedError("submissions lookup returned non-JSON", "retry the lookup")
+    if not isinstance(rows, list):
+        raise BlockedError("submissions lookup returned unexpected shape", "retry the lookup")
+    matches = [r for r in rows if str(r.get("description", "")) == message and r.get("ref") is not None]
+    if not matches:
+        raise BlockedError("submitted row not visible yet", "wait and retry `submissions -c <slug>`")
+    matches.sort(key=lambda r: (str(r.get("date", "")), str(r.get("ref", ""))))
+    return str(matches[-1]["ref"])
 
 
 def poll(competition: str, ref: str, max_attempts: int = 24) -> dict:
