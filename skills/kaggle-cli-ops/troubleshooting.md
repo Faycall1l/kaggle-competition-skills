@@ -32,3 +32,10 @@ quota, or restart multi-GB downloads.
 | `ValueError: too many values to unpack` on delete | Versioned ref passed to delete | `kaggle kernels delete <owner/slug>` — versions are not deletable |
 | `cp932` codec crash on `kernels output` (Windows) | Non-ASCII logs on legacy console | Set UTF-8 locale or fetch logs via API |
 | No `cancel` command for runaway session | Not exposed in CLI | Stop the session in the web UI |
+
+## Submissions
+
+| Symptom | Cause | Action |
+|---|---|---|
+| `ID column submission_id not found in submission` | A per-task intermediate was uploaded instead of the merged file | Submit the merged upload file; verify header with `comp_submit.py --expect-columns` before sending |
+| Submission scored 0.0 with valid format | Genuinely out-of-scope values, or blank cells rejected at scoring | Check for blank rows; confirm value ranges against the sample |
