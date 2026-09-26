@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "kaggle-cli-ops" / "scripts"))
 
-from common import BlockedError, UsageError, backoff_delays, emit, parse_dataset_ref, parse_kernel_ref
+from common import BlockedError, UsageError, backoff_delays, emit, parse_dataset_ref, parse_kernel_ref, run_cli
 
 
 def test_emit_writes_json(capsys):
@@ -58,3 +58,8 @@ def test_backoff_delays_invalid():
 def test_blocked_error_carries_next_action():
     err = BlockedError("no quota", "run doctor.py")
     assert err.next_action == "run doctor.py"
+
+
+def test_run_cli_missing_binary():
+    code, out, err = run_cli(["--version"], binary="definitely-not-a-binary-xyz")
+    assert code == 127 and out == "" and err

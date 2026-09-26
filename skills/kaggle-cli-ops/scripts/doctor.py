@@ -10,13 +10,12 @@ import argparse
 import json
 import os
 import stat
-import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import emit, run
+from common import emit, run, run_cli
 
 KAGGLE_DIR_NAME = ".kaggle"
 API_TOKEN_ENV = "KAGGLE_API_TOKEN"
@@ -83,15 +82,6 @@ def detect_credentials(env: dict[str, str], home: Path) -> tuple[list[dict], int
     except OSError:
         mode = None
     return sources, mode
-
-
-def run_cli(args: list[str], timeout: int = 60) -> tuple[int, str, str]:
-    """Run the kaggle CLI, capturing output. Never logs secret values."""
-    try:
-        proc = subprocess.run(["kaggle", *args], capture_output=True, text=True, timeout=timeout)
-    except (OSError, subprocess.SubprocessError) as exc:
-        return 127, "", str(exc)
-    return proc.returncode, proc.stdout, proc.stderr
 
 
 def check_cli_version() -> dict:
