@@ -55,3 +55,15 @@ script plus its versioned runs.
   token prints.
 - Non-ASCII logs can crash Windows `cp932` consoles; prefer the API or UTF-8
   locale (see `troubleshooting.md`).
+
+## Submitting kernel output
+
+- `/kaggle/working` holds intermediates alongside the final file. Submit only
+  the merged upload file (e.g. `submission.csv`); per-task intermediates are
+  keyed differently and the leaderboard rejects them
+  (`ID column submission_id not found`).
+- Verify before submit: header matches the competition template exactly and no
+  row is blank. `comp_submit.py --expect-columns` enforces this without
+  loading the file.
+- End every submission-producing notebook with a cell that prints the exact
+  submit target path, its header, and its row count.

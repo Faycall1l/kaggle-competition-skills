@@ -26,6 +26,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--kernel", default=None, help="Kernel ref for code competitions (owner/slug).")
     parser.add_argument("--version", default=None, help="Kernel version for code competitions.")
     parser.add_argument("--wait", action="store_true", help="Poll until scored (CLI releases with --wait only).")
+    parser.add_argument(
+        "--expect-columns",
+        default=None,
+        help="Comma-separated required header, e.g. 'submission_id,task,speed_kmh'. Rejects wrong-file uploads.",
+    )
     return parser
 
 
@@ -39,17 +44,26 @@ def main() -> None:
             kernel=args.kernel,
             version=args.version,
             wait=args.wait,
+            expect_columns=args.expect_columns,
         )
     )
 
 
-def submit(competition: str, file: str, message: str, kernel: str | None, version: str | None, wait: bool) -> dict:
+def submit(
+    competition: str,
+    file: str,
+    message: str,
+    kernel: str | None,
+    version: str | None,
+    wait: bool,
+    expect_columns: str | None = None,
+) -> dict:
     """Submit and optionally poll; steps monkeypatchable for testing."""
     if not competition or "/" in competition:
         raise UsageError(f"Invalid competition slug {competition!r}")
     if kernel and not version:
         raise UsageError("code-competition submit requires --version with --kernel")
-    preflight(competition, file, kernel)
+    preflight(competition, file, kernel, expect_columns)
     ref = send(competition, file, message, kernel, version)
     result: dict = {"ok": True, "competition": competition, "ref": ref}
     if wait:
@@ -57,13 +71,13 @@ def submit(competition: str, file: str, message: str, kernel: str | None, versio
     return result
 
 
-def preflight(competition: str, file: str, kernel: str | None) -> None:
+def preflight(competition: str, file: str, kernel: str | None, expect_columns: str | None = None) -> None:
     """Verify allowance, file presence, and header compatibility. Raises on blockers."""
     check_allowance(competition)
     if kernel:
         check_kernel_submittable(kernel)
     else:
-        check_file(file, competition)
+        check_file(file, competition, expect_columns)
 
 
 def check_allowance(competition: str) -> None:
@@ -79,18 +93,42 @@ def check_allowance(competition: str) -> None:
         raise BlockedError("no daily submissions remaining", "wait for reset or request quota")
 
 
-def check_file(file: str, competition: str) -> None:
-    """Verify the submission file exists and matches the sample header when available."""
+def check_file(file: str, competition: str, expect_columns: str | None = None) -> None:
+    """Verify the submission file exists, has no blank cells, and matches the expected header.
+
+    Header source, in order: explicit --expect-columns, local sample_submission.csv
+    when present. A wrong-file upload (e.g. a per-task intermediate instead of the
+    merged submission) fails here instead of consuming a submission slot.
+    """
     path = Path(file)
     if not path.is_file():
         raise UsageError(f"submission file not found: {file}")
-    sample = Path(competition) / "data" / "sample_submission.csv"
-    if sample.is_file():
-        expected = sample.read_text().splitlines()[0].split(",")
-        actual = path.read_text().splitlines()[0].split(",")
-        if expected != actual:
+    with path.open(encoding="utf-8", errors="replace") as handle:
+        header = handle.readline()
+        if not header:
+            raise BlockedError(f"submission file is empty: {file}", "regenerate the file")
+        for line_number, line in enumerate(handle, start=2):
+            if not line.strip():
+                raise BlockedError(
+                    f"submission file has a blank row (line {line_number}): {file}",
+                    "regenerate without blank cells",
+                )
+    expected: list[str] | None = None
+    source = ""
+    if expect_columns:
+        expected = [c.strip() for c in expect_columns.split(",")]
+        source = "--expect-columns"
+    else:
+        sample = Path(competition) / "data" / "sample_submission.csv"
+        if sample.is_file():
+            expected = sample.read_text().splitlines()[0].split(",")
+            source = "sample_submission.csv"
+    if expected is not None:
+        actual = header.strip().split(",")
+        if actual != expected:
             raise BlockedError(
-                f"header mismatch: expected {expected}, got {actual}", "regenerate from sample_submission.csv"
+                f"header mismatch ({source}): expected {expected}, got {actual}",
+                "submit the merged submission file, not a per-task intermediate",
             )
 
 
