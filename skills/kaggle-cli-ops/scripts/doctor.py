@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import emit, run, run_cli
+from common import emit, extract_json, run, run_cli
 
 KAGGLE_DIR_NAME = ".kaggle"
 API_TOKEN_ENV = "KAGGLE_API_TOKEN"
@@ -98,7 +98,7 @@ def check_quota() -> dict:
     if code != 0:
         return {"name": "quota", "status": "error", "detail": (err or out).strip()[-200:]}
     try:
-        return {"name": "quota", "status": "ok", "quota": json.loads(out)}
+        return {"name": "quota", "status": "ok", "quota": extract_json(out)}
     except ValueError:
         return {"name": "quota", "status": "error", "detail": "non-JSON quota output"}
 

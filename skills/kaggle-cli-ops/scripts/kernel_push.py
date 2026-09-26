@@ -15,9 +15,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import BlockedError, UsageError, backoff_delays, emit, log, run, run_cli
+from common import BlockedError, UsageError, backoff_delays, emit, extract_json, log, run, run_cli
 
 TERMINAL_STATES = ("COMPLETE", "ERROR", "CANCELLED")
+SLUG_MISMATCH_MARKERS = ("wrong kernel slug", "kernels.get")
 VERSION_RE = re.compile(r"Kernel version (\d+)")
 
 
@@ -42,8 +43,20 @@ def push(kernel_dir: str, timeout: int | None, accelerator: str | None, no_run: 
     version = push_version(Path(kernel_dir), timeout=timeout, accelerator=accelerator, no_run=no_run)
     result: dict = {"ok": True, "kernel": slug, "version": version}
     if wait and not no_run:
-        result["status"] = poll_status(slug, version)
+        result["status"] = poll_status(slug, version, title=read_kernel_title(Path(kernel_dir)))
+        if result["status"].get("kernel") != slug:
+            result["kernel"] = result["status"].pop("kernel")
+            result["slug_normalized"] = True
     return result
+
+
+def read_kernel_title(kernel_dir: Path) -> str:
+    """Read the kernel title from metadata (used for slug resolution)."""
+    meta = kernel_dir / "kernel-metadata.json"
+    try:
+        return str(json.loads(meta.read_text()).get("title", ""))
+    except (OSError, ValueError):
+        return ""
 
 
 def read_kernel_slug(kernel_dir: Path) -> str:
@@ -88,23 +101,53 @@ def parse_status(text: str) -> str:
     raise BlockedError(f"unrecognized status output: {text.strip()[-200:]}", "check `kaggle kernels status` manually")
 
 
-def poll_status(slug: str, version: int, max_attempts: int = 24) -> dict:
-    """Poll until a terminal state; fetch logs on failure."""
+def poll_status(slug: str, version: int, max_attempts: int = 24, title: str = "") -> dict:
+    """Poll until a terminal state; fetch logs on failure.
+
+    The server normalizes the owner to the account username, so a metadata id
+    using another handle fails status with a slug-mismatch error. On the first
+    such failure, resolve the real ref once via `kernels list -m` title match.
+    """
     ref = f"{slug}/{version}"
+    resolved = False
     for delay in backoff_delays(max_attempts):
         code, out, err = run_cli(["kernels", "status", ref], timeout=120)
         if code != 0:
-            raise BlockedError(f"status failed: {(err or out).strip()[-200:]}", "check credentials and kernel ref")
+            combined = (err or out).strip()
+            if not resolved and any(m in combined for m in SLUG_MISMATCH_MARKERS):
+                ref = resolve_kernel_ref(title) + f"/{version}"
+                resolved = True
+                log(f"slug normalized: {slug} -> {ref.rsplit('/', 1)[0]}")
+                continue
+            raise BlockedError(f"status failed: {combined[-200:]}", "check credentials and kernel ref")
         state = parse_status(out)
         log(f"status {ref}: {state}")
         if state in TERMINAL_STATES:
-            result = {"state": state}
+            result = {"state": state, "kernel": ref.rsplit("/", 1)[0]}
             if state != "COMPLETE":
-                result["logs_tail"] = fetch_logs(slug, version)
+                result["logs_tail"] = fetch_logs(ref.rsplit("/", 1)[0], version)
             return result
         time.sleep(delay)
     code, out, err = run_cli(["kernels", "status", ref], timeout=120)
-    return {"state": parse_status(out) if code == 0 else "TIMEOUT"}
+    final = {"state": parse_status(out) if code == 0 else "TIMEOUT", "kernel": ref.rsplit("/", 1)[0]}
+    return final
+
+
+def resolve_kernel_ref(title: str) -> str:
+    """Find an owned kernel ref by exact title match. Raises BlockedError when absent."""
+    code, out, err = run_cli(
+        ["kernels", "list", "-m", "--sort-by", "dateRun", "--page-size", "100", "--format", "json"], timeout=120
+    )
+    if code != 0:
+        raise BlockedError(f"kernel lookup failed: {(err or out).strip()[-200:]}", "check credentials")
+    try:
+        rows = extract_json(out)
+    except ValueError:
+        raise BlockedError("kernel lookup returned non-JSON", "retry `kaggle kernels list -m`")
+    for row in rows if isinstance(rows, list) else []:
+        if str(row.get("title", "")) == title and row.get("ref"):
+            return str(row["ref"])
+    raise BlockedError(f"no owned kernel titled {title!r}", "check the notebook URL slug")
 
 
 def fetch_logs(slug: str, version: int, dest: Path | None = None) -> str:

@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import BlockedError, UsageError, backoff_delays, emit, log, parse_kernel_ref, run, run_cli
+from common import BlockedError, UsageError, backoff_delays, emit, extract_json, log, parse_kernel_ref, run, run_cli
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,7 +72,7 @@ def check_allowance(competition: str) -> None:
     if code != 0:
         raise BlockedError(f"allowance check failed: {(err or out).strip()[-200:]}", "verify competition access")
     try:
-        remaining = json.loads(out).get("remaining")
+        remaining = extract_json(out).get("numAllowedNow")
     except ValueError:
         return
     if isinstance(remaining, int) and remaining <= 0:
@@ -113,7 +113,12 @@ def check_kernel_submittable(kernel: str) -> None:
 
 
 def send(competition: str, file: str, message: str, kernel: str | None, version: str | None) -> str:
-    """Run the CLI submit. Returns the submission ref; 403 on code comps degrades to browser fallback."""
+    """Run the CLI submit. Returns the submission ref.
+
+    Upstream main prints `Submission ref: <ref>`; pip releases (e.g. 2.2.4) do
+    not. Fall back to matching the unique description message in the
+    submissions list. Never returns unparseable output as a ref.
+    """
     cmd = ["competitions", "submit", competition, "-f", file, "-m", message]
     if kernel:
         cmd += ["-k", kernel, "-v", str(version)]
@@ -128,8 +133,29 @@ def send(competition: str, file: str, message: str, kernel: str | None, version:
         raise BlockedError(f"submit failed: {combined[-300:]}", "inspect the message and retry")
     for line in combined.splitlines():
         if "Submission ref:" in line:
-            return line.split("Submission ref:")[-1].strip()
-    return combined[-200:]
+            ref = line.split("Submission ref:")[-1].strip()
+            if ref:
+                return ref
+    log("CLI did not print a submission ref; matching by description message")
+    return ref_by_description(competition, message)
+
+
+def ref_by_description(competition: str, message: str) -> str:
+    """Find the newest submission row with an exact description match."""
+    code, out, err = run_cli(["competitions", "submissions", "-c", competition, "--format", "json"], timeout=120)
+    if code != 0:
+        raise BlockedError(f"submissions lookup failed: {(err or out).strip()[-200:]}", "verify competition access")
+    try:
+        rows = extract_json(out)
+    except ValueError:
+        raise BlockedError("submissions lookup returned non-JSON", "retry the lookup")
+    if not isinstance(rows, list):
+        raise BlockedError("submissions lookup returned unexpected shape", "retry the lookup")
+    matches = [r for r in rows if str(r.get("description", "")) == message and r.get("ref") is not None]
+    if not matches:
+        raise BlockedError("submitted row not visible yet", "wait and retry `submissions -c <slug>`")
+    matches.sort(key=lambda r: (str(r.get("date", "")), str(r.get("ref", ""))))
+    return str(matches[-1]["ref"])
 
 
 def poll(competition: str, ref: str, max_attempts: int = 24) -> dict:
@@ -143,18 +169,26 @@ def poll(competition: str, ref: str, max_attempts: int = 24) -> dict:
     return {"state": submission_state(competition, ref)}
 
 
+def normalize_status(raw: str) -> str:
+    """Normalize backend enum names (`SubmissionStatus.COMPLETE`) to plain states (`complete`)."""
+    return raw.lower().removeprefix("submissionstatus.")
+
+
 def submission_state(competition: str, ref: str) -> str:
     """Read the current state of one submission from the submissions list."""
     code, out, err = run_cli(["competitions", "submissions", "-c", competition, "--format", "json"], timeout=120)
     if code != 0:
-        raise BlockedError(f"submissions lookup failed: {(err or out).strip()[-200:]}", "verify competition access")
+        combined = (err or out).strip()
+        if "400" in combined and "ListSubmissions" in combined:
+            return "unknown"
+        raise BlockedError(f"submissions lookup failed: {combined[-200:]}", "verify competition access")
     try:
-        rows = json.loads(out)
+        rows = extract_json(out)
     except ValueError:
         return "unknown"
     for row in rows if isinstance(rows, list) else []:
         if str(row.get("ref", "")) == ref or str(row.get("fileName", "")) == ref:
-            return str(row.get("status", "unknown")).lower()
+            return normalize_status(str(row.get("status", "unknown")))
     return "unknown"
 
 

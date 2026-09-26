@@ -95,3 +95,21 @@ def run_cli(args: list[str], timeout: int = 300, binary: str = "kaggle") -> tupl
     except (OSError, subprocess.SubprocessError) as exc:
         return 127, "", str(exc)
     return proc.returncode, proc.stdout, proc.stderr
+
+
+def extract_json(text: str) -> Any:
+    """Parse JSON from CLI output, skipping non-JSON preamble lines on stdout.
+
+    The CLI prints warnings (e.g. key-permission notices) to stdout ahead of
+    `--format json` payloads. Raises ValueError when no JSON value is found.
+    """
+    decoder = json.JSONDecoder()
+    for i, line in enumerate(text.splitlines()):
+        stripped = line.strip()
+        if stripped[:1] in ("{", "["):
+            try:
+                value, _ = decoder.raw_decode("\n".join(text.splitlines()[i:]))
+                return value
+            except ValueError:
+                continue
+    raise ValueError("no JSON value in output")

@@ -13,7 +13,9 @@ from comp_submit import (
     check_file,
     check_kernel_submittable,
     leaderboard,
+    normalize_status,
     poll,
+    ref_by_description,
     send,
     submission_state,
     submit,
@@ -21,7 +23,7 @@ from comp_submit import (
 
 
 def _ok_allowance(monkeypatch):
-    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"remaining": 3}', ""))
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"numAllowedNow": 3}', ""))
 
 
 def test_submit_bad_slug():
@@ -44,9 +46,42 @@ def test_submit_happy(monkeypatch, tmp_path):
 
 
 def test_check_allowance_exhausted(monkeypatch):
-    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"remaining": 0}', ""))
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"numAllowedNow": 0}', ""))
     with pytest.raises(BlockedError):
         check_allowance("titanic")
+
+
+def test_check_allowance_uses_json_flag(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, timeout):
+        seen["cmd"] = cmd
+        return (0, '{"numAllowedNow": 3}', "")
+
+    monkeypatch.setattr(comp_submit, "run_cli", fake_run)
+    check_allowance("titanic")
+    assert "--json" in seen["cmd"]
+
+
+def test_normalize_status():
+    assert normalize_status("SubmissionStatus.COMPLETE") == "complete"
+    assert normalize_status("SubmissionStatus.ERROR") == "error"
+    assert normalize_status("pending") == "pending"
+
+
+def test_submission_state_enum_prefix(monkeypatch):
+    rows = json.dumps([{"ref": 45668828, "fileName": "submission.csv", "status": "SubmissionStatus.COMPLETE"}])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, rows, ""))
+    assert submission_state("c", "45668828") == "complete"
+
+
+def test_submission_state_empty_history_400(monkeypatch):
+    monkeypatch.setattr(
+        comp_submit,
+        "run_cli",
+        lambda cmd, timeout: (1, "", "400 Client Error for url: CompetitionApiService/ListSubmissions"),
+    )
+    assert submission_state("c", "r") == "unknown"
 
 
 def test_check_allowance_cli_failure(monkeypatch):
@@ -112,6 +147,32 @@ def test_send_failure(monkeypatch):
 def test_send_ref_parsed(monkeypatch):
     monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, "Submission ref: abc-123", ""))
     assert send("c", "f.csv", "m", None, None) == "abc-123"
+
+
+def test_send_falls_back_to_description(monkeypatch):
+    rows = json.dumps([{"ref": 11, "description": "old"}, {"ref": 22, "description": "m"}])
+    calls = iter([(0, "uploaded ok", ""), (0, rows, "")])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: next(calls))
+    assert send("c", "f.csv", "m", None, None) == "22"
+
+
+def test_send_no_ref_no_row(monkeypatch):
+    calls = iter([(0, "uploaded ok", ""), (0, "[]", "")])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: next(calls))
+    with pytest.raises(BlockedError):
+        send("c", "f.csv", "m", None, None)
+
+
+def test_ref_by_description_newest(monkeypatch):
+    rows = json.dumps(
+        [
+            {"ref": 1, "description": "m", "date": "2026-01-01"},
+            {"ref": 2, "description": "m", "date": "2026-01-02"},
+            {"ref": 3, "description": "other", "date": "2026-01-03"},
+        ]
+    )
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, rows, ""))
+    assert ref_by_description("c", "m") == "2"
 
 
 def test_poll_complete(monkeypatch):

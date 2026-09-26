@@ -5,7 +5,16 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "kaggle-cli-ops" / "scripts"))
 
-from common import BlockedError, UsageError, backoff_delays, emit, parse_dataset_ref, parse_kernel_ref, run_cli
+from common import (
+    BlockedError,
+    UsageError,
+    backoff_delays,
+    emit,
+    extract_json,
+    parse_dataset_ref,
+    parse_kernel_ref,
+    run_cli,
+)
 
 
 def test_emit_writes_json(capsys):
@@ -63,3 +72,17 @@ def test_blocked_error_carries_next_action():
 def test_run_cli_missing_binary():
     code, out, err = run_cli(["--version"], binary="definitely-not-a-binary-xyz")
     assert code == 127 and out == "" and err
+
+
+def test_extract_json_clean():
+    assert extract_json('{"a": 1}') == {"a": 1}
+
+
+def test_extract_json_skips_warning_preamble():
+    out = 'Warning: readable key!\n[{"resource": "GPU"}]'
+    assert extract_json(out) == [{"resource": "GPU"}]
+
+
+def test_extract_json_none_found():
+    with pytest.raises(ValueError):
+        extract_json("no json here\n[broken")
