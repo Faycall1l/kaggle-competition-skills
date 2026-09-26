@@ -1,0 +1,7 @@
+{
+  "name": "kaggle-competition-skills",
+  "description": "Agent skills for Kaggle competition operations via the CLI",
+  "version": "0.1.0",
+  "author": "Faycall1l",
+  "license": "MIT"
+}

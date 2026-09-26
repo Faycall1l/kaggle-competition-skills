@@ -1,0 +1,11 @@
+{
+  "name": "kaggle-competition-skills",
+  "owner": "Faycall1l",
+  "plugins": [
+    {
+      "name": "kaggle-competition-skills",
+      "source": ".",
+      "description": "Agent skills for Kaggle competition operations via the CLI"
+    }
+  ]
+}
