@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+htmlcov/
+coverage.xml
+
+# Env / secrets — never commit Kaggle credentials
+.env
+.kaggle/
+*_token*
+*kaggle*.json
+
+# Data / workspaces (large, local-only)
+data/
+input/
+working/
+*.zip
+*.tar.gz
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+*.swp

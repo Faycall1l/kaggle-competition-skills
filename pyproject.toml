@@ -1,0 +1,17 @@
+[project]
+name = "kaggle-competition-skills"
+version = "0.1.0"
+description = "Agent skills for Kaggle competition operations via the CLI"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.black]
+target-version = ["py311"]
+line-length = 120
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
