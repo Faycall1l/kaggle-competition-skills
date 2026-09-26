@@ -1,0 +1,14 @@
+$ python skills/kaggle-cli-ops/scripts/doctor.py --check-quota
+{"ok": true, "include_quota": true, "checks": [{"name": "credentials", "sources": [{"source": "file:access_token", "present": true}, {"source": "file:kaggle.json", "present": true, "has_credentials": true}]}, {"name": "cli", "status": "ok", "version": "Kaggle CLI 2.2.4"}, {"name": "kaggle.json permissions", "status": "warn", "mode": "0o644"}, {"name": "quota", "status": "ok", "quota": [{"resource": "GPU", "used": "0.00h", "remaining": "30.00h", "total": "30.00h", "refreshAt": "2026-10-03T00:00:00"}, {"resource": "TPU", "used": "0.00h", "remaining": "20.00h", "total": "20.00h", "refreshAt": "2026-10-03T00:00:00"}]}]}
+
+$ python skills/kaggle-cli-ops/scripts/comp_submit.py --help
+usage: comp_submit.py [-h] --file FILE --message MESSAGE [--kernel KERNEL]
+                      [--version VERSION] [--wait]
+                      competition
+
+
+$ python skills/kaggle-learnings/scripts/kln.py --root /tmp/demo-mem add --title "Demo finding" --finding "Recorded session works." --competition demo
+{"ok": true, "id": 1, "path": "/tmp/demo-mem/L-001-demo-finding.md"}
+
+$ python skills/kaggle-learnings/scripts/kln.py --root /tmp/demo-mem list
+{"ok": true, "learnings": [{"path": "/tmp/demo-mem/L-001-demo-finding.md", "title": "Demo finding"}]}

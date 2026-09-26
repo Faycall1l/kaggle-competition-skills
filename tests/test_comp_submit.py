@@ -181,11 +181,17 @@ def test_poll_complete(monkeypatch):
     assert poll("c", "ref") == {"state": "complete"}
 
 
-def test_submission_state_lookup(monkeypatch):
-    rows = json.dumps([{"ref": "r1", "status": "complete"}, {"ref": "r2", "status": "pending"}])
+def test_submission_state_ref_takes_precedence(monkeypatch):
+    rows = json.dumps(
+        [
+            {"ref": 1, "fileName": "target.csv", "status": "SubmissionStatus.ERROR"},
+            {"ref": 2, "fileName": "other.csv", "status": "SubmissionStatus.COMPLETE"},
+        ]
+    )
     monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, rows, ""))
-    assert submission_state("c", "r2") == "pending"
-    assert submission_state("c", "missing") == "unknown"
+    assert submission_state("c", "target.csv") == "error"
+    assert submission_state("c", "2") == "complete"
+    assert submission_state("c", "absent") == "unknown"
 
 
 def test_submission_state_non_json(monkeypatch):

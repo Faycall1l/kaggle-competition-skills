@@ -16,6 +16,7 @@ from kernel_push import (
     push,
     push_version,
     read_kernel_slug,
+    require_push_flag,
     resolve_kernel_ref,
 )
 
@@ -58,9 +59,12 @@ def test_push_version_flags(monkeypatch, tmp_path):
     seen = {}
 
     def fake_run(cmd, timeout):
+        if "--help" in cmd:
+            return (0, "--timeout --accelerator --no-run", "")
         seen["cmd"] = cmd
         return (0, "Kernel version 1 ok", "")
 
+    monkeypatch.setattr(kernel_push, "_push_help_cache", None)
     monkeypatch.setattr(kernel_push, "run_cli", fake_run)
     push_version(tmp_path, timeout=60, accelerator="NvidiaTeslaT4", no_run=True)
     assert "--timeout" in seen["cmd"] and "--accelerator" in seen["cmd"] and "--no-run" in seen["cmd"]
@@ -122,6 +126,25 @@ def test_resolve_no_match(monkeypatch):
     monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "[]", ""))
     with pytest.raises(BlockedError):
         resolve_kernel_ref("Missing")
+
+
+def test_require_push_flag_present(monkeypatch):
+    monkeypatch.setattr(kernel_push, "_push_help_cache", None)
+    monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "--no-run", ""))
+    require_push_flag("--no-run")
+
+
+def test_require_push_flag_absent(monkeypatch):
+    monkeypatch.setattr(kernel_push, "_push_help_cache", None)
+    monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "--timeout", ""))
+    with pytest.raises(BlockedError):
+        require_push_flag("--no-run")
+
+
+def test_push_version_rejects_unsupported_norun(monkeypatch, tmp_path):
+    monkeypatch.setattr(kernel_push, "_push_help_cache", "--timeout")
+    with pytest.raises(BlockedError):
+        push_version(tmp_path, timeout=None, accelerator=None, no_run=True)
 
 
 def test_fetch_logs_failure(monkeypatch):

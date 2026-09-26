@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "kaggle-learnings" / "scripts"))
 
-from kln import add_learning, archive_learning, list_learnings, next_id, slugify
+from kln import UsageError, add_learning, archive_learning, list_learnings, main, next_id, slugify
 
 
 def test_slugify():
@@ -27,9 +27,9 @@ def test_add_rejects_empty():
     import tempfile
 
     with tempfile.TemporaryDirectory() as d:
-        with pytest.raises(ValueError):
+        with pytest.raises(UsageError):
             add_learning(Path(d), "  ", "F", "c", "")
-        with pytest.raises(ValueError):
+        with pytest.raises(UsageError):
             add_learning(Path(d), "T", "  ", "c", "")
 
 
@@ -56,12 +56,40 @@ def test_archive_moves_not_deletes(tmp_path):
 def test_archive_unknown_id(tmp_path):
     root = tmp_path / ".learnings"
     root.mkdir()
-    with pytest.raises(ValueError):
+    with pytest.raises(UsageError):
         archive_learning(root, 9, "reason")
 
 
 def test_archive_empty_reason(tmp_path):
     root = tmp_path / ".learnings"
     add_learning(root, "T", "F", "c", "")
-    with pytest.raises(ValueError):
+    with pytest.raises(UsageError):
         archive_learning(root, 1, "  ")
+
+
+def test_main_error_envelope(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(sys, "argv", ["kln.py", "--root", str(tmp_path), "add", "--title", " ", "--finding", "F"])
+    with pytest.raises(UsageError):
+        main()
+
+
+def test_cli_error_envelope_standalone(tmp_path):
+    """Entry-point contract without repo imports: isolated copy, stdlib only."""
+    import json
+    import shutil
+    import subprocess
+
+    iso = tmp_path / "iso"
+    iso.mkdir()
+    shutil.copy(
+        Path(__file__).resolve().parent.parent / "skills" / "kaggle-learnings" / "scripts" / "kln.py", iso / "kln.py"
+    )
+    proc = subprocess.run(
+        [sys.executable, "kln.py", "--root", "mem", "add", "--title", " ", "--finding", "F"],
+        capture_output=True,
+        text=True,
+        cwd=iso,
+        env={"PATH": "/usr/bin:/bin", "SYSTEMROOT": ""},
+    )
+    assert proc.returncode == 2
+    assert json.loads(proc.stdout)["ok"] is False

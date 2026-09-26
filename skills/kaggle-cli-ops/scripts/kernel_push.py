@@ -21,6 +21,21 @@ TERMINAL_STATES = ("COMPLETE", "ERROR", "CANCELLED")
 SLUG_MISMATCH_MARKERS = ("wrong kernel slug", "kernels.get")
 VERSION_RE = re.compile(r"Kernel version (\d+)")
 
+_push_help_cache: str | None = None
+
+
+def require_push_flag(flag: str) -> None:
+    """Fail fast when the installed CLI lacks a push flag (release skew)."""
+    global _push_help_cache
+    if _push_help_cache is None:
+        code, out, _ = run_cli(["kernels", "push", "--help"], timeout=60)
+        _push_help_cache = out if code == 0 else ""
+    if flag not in _push_help_cache:
+        raise BlockedError(
+            f"installed CLI lacks `kernels push {flag}`",
+            "upgrade kaggle past 2.2.4 or omit the flag",
+        )
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Push a kernel, monitor its run, fetch logs and output.")
@@ -82,6 +97,7 @@ def push_version(kernel_dir: Path, timeout: int | None, accelerator: str | None,
     if accelerator:
         cmd += ["--accelerator", accelerator]
     if no_run:
+        require_push_flag("--no-run")
         cmd += ["--no-run"]
     code, out, err = run_cli(cmd, timeout=600)
     if code != 0:
