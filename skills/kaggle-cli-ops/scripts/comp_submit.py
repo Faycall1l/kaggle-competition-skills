@@ -186,8 +186,13 @@ def submission_state(competition: str, ref: str) -> str:
         rows = extract_json(out)
     except ValueError:
         return "unknown"
-    for row in rows if isinstance(rows, list) else []:
-        if str(row.get("ref", "")) == ref or str(row.get("fileName", "")) == ref:
+    if not isinstance(rows, list):
+        return "unknown"
+    for row in rows:
+        if str(row.get("ref", "")) == ref:
+            return normalize_status(str(row.get("status", "unknown")))
+    for row in rows:
+        if str(row.get("fileName", "")) == ref:
             return normalize_status(str(row.get("status", "unknown")))
     return "unknown"
 
