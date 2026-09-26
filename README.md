@@ -21,6 +21,9 @@ learnings memory loop.
 | OpenCode / Cursor / Gemini / Windsurf | `npx skills add Faycall1l/kaggle-competition-skills` |
 | Any Agent Skills runtime | `cp -R skills/<skill-name> <your-skills-directory>/` |
 
+The `npx skills` CLI requires node.js 22.20 or newer. Each skill also installs
+standalone via directory copy (no build step, no registry account).
+
 ## Prompts
 
 Competition setup (any agent):

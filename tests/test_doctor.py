@@ -75,6 +75,12 @@ def test_cli_version_ok(monkeypatch):
     assert result["status"] == "ok" and "2.2.4" in result["version"]
 
 
+def test_cli_version_skips_stdout_warning(monkeypatch):
+    out = "Warning: readable key!\nKaggle CLI 2.2.4\n"
+    monkeypatch.setattr(doctor, "run_cli", lambda args, timeout=60: (0, out, ""))
+    assert check_cli_version()["version"] == "Kaggle CLI 2.2.4"
+
+
 def test_quota_json_parsed(monkeypatch):
     monkeypatch.setattr(doctor, "run_cli", lambda args, timeout=60: (0, '{"gpu": 10}', ""))
     result = check_quota()
