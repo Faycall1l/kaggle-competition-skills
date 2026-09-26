@@ -2,17 +2,35 @@
 
 Stores one markdown file per learning under a root directory (default
 `.learnings/` in the cwd). Emits JSON to stdout; diagnostics to stderr.
+Self-contained: no imports outside stdlib, so the skill installs standalone.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from datetime import date
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+class UsageError(Exception):
+    """Invalid arguments; reported as JSON with exit code 2."""
+
+
+def emit(data: dict) -> None:
+    """Write a JSON document to stdout."""
+    sys.stdout.write(json.dumps(data) + "\n")
+
+
+def run(main) -> None:  # type: ignore[no-untyped-def]
+    """Entry-point wrapper mapping UsageError to a JSON error envelope."""
+    try:
+        main()
+    except UsageError as exc:
+        emit({"ok": False, "error": str(exc)})
+        raise SystemExit(2)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -34,8 +52,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
-    import json
-
     args = build_parser().parse_args()
     root = Path(args.root)
     if args.command == "add":
@@ -44,7 +60,7 @@ def main() -> None:
         result = archive_learning(root, args.id, args.reason)
     else:
         result = {"ok": True, "learnings": list_learnings(root, args.competition, args.query)}
-    sys.stdout.write(json.dumps(result) + "\n")
+    emit(result)
 
 
 def slugify(text: str) -> str:
@@ -62,7 +78,7 @@ def next_id(root: Path) -> int:
 def add_learning(root: Path, title: str, finding: str, competition: str, evidence: str) -> dict:
     """Write one learning file. Returns its id and path."""
     if not title.strip() or not finding.strip():
-        raise ValueError("title and finding must be non-empty")
+        raise UsageError("title and finding must be non-empty")
     root.mkdir(parents=True, exist_ok=True)
     lid = next_id(root)
     path = root / f"L-{lid:03d}-{slugify(title)}.md"
@@ -94,9 +110,9 @@ def archive_learning(root: Path, lid: int, reason: str) -> dict:
     """Move a learning to archive/ with a reason trailer. Never deletes."""
     matches = [f for f in root.glob(f"L-{lid:03d}-*.md") if f.is_file()]
     if not matches:
-        raise ValueError(f"no learning with id {lid}")
+        raise UsageError(f"no learning with id {lid}")
     if not reason.strip():
-        raise ValueError("archive reason must be non-empty")
+        raise UsageError("archive reason must be non-empty")
     dest_dir = root / "archive"
     dest_dir.mkdir(parents=True, exist_ok=True)
     src = matches[0]
@@ -107,4 +123,4 @@ def archive_learning(root: Path, lid: int, reason: str) -> dict:
 
 
 if __name__ == "__main__":
-    main()
+    run(main)
