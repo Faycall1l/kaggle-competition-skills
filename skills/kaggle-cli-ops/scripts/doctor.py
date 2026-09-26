@@ -89,7 +89,9 @@ def check_cli_version() -> dict:
     code, out, err = run_cli(["--version"])
     if code != 0:
         return {"name": "cli", "status": "error", "detail": (err or out).strip()[-200:]}
-    return {"name": "cli", "status": "ok", "version": out.strip().splitlines()[0] if out.strip() else "unknown"}
+    lines = [line for line in out.strip().splitlines() if line.startswith("Kaggle")]
+    version = lines[0] if lines else out.strip().splitlines()[0] if out.strip() else "unknown"
+    return {"name": "cli", "status": "ok", "version": version}
 
 
 def check_quota() -> dict:
