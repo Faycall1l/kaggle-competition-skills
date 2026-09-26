@@ -8,7 +8,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "skills" / "kagg
 
 import kernel_push
 from common import BlockedError, UsageError
-from kernel_push import download_output, fetch_logs, parse_status, poll_status, push, push_version, read_kernel_slug
+from kernel_push import (
+    download_output,
+    fetch_logs,
+    parse_status,
+    poll_status,
+    push,
+    push_version,
+    read_kernel_slug,
+    resolve_kernel_ref,
+)
 
 
 def _kernel_dir(tmp_path, ref="owner/slug"):
@@ -84,7 +93,7 @@ def test_poll_complete(monkeypatch):
     calls = iter([(0, "RUNNING", ""), (0, "COMPLETE", "")])
     monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: next(calls))
     monkeypatch.setattr(kernel_push.time, "sleep", lambda s: None)
-    assert poll_status("o/s", 2) == {"state": "COMPLETE"}
+    assert poll_status("o/s", 2) == {"state": "COMPLETE", "kernel": "o/s"}
 
 
 def test_poll_error_fetches_logs(monkeypatch):
@@ -94,6 +103,25 @@ def test_poll_error_fetches_logs(monkeypatch):
     monkeypatch.setattr(kernel_push.time, "sleep", lambda s: None)
     result = poll_status("o/s", 2)
     assert result["state"] == "ERROR" and "traceback" in result["logs_tail"]
+
+
+def test_poll_slug_mismatch_resolves(monkeypatch):
+    calls = iter(
+        [
+            (1, "", "wrong kernel slug, use kaggle.com/code/owner/REAL"),
+            (0, '[{"ref": "real/slug", "title": "T"}]', ""),
+            (0, "COMPLETE", ""),
+        ]
+    )
+    monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: next(calls))
+    monkeypatch.setattr(kernel_push.time, "sleep", lambda s: None)
+    assert poll_status("wrong/slug", 1, title="T") == {"state": "COMPLETE", "kernel": "real/slug"}
+
+
+def test_resolve_no_match(monkeypatch):
+    monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "[]", ""))
+    with pytest.raises(BlockedError):
+        resolve_kernel_ref("Missing")
 
 
 def test_fetch_logs_failure(monkeypatch):
