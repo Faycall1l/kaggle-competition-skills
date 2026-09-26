@@ -209,3 +209,32 @@ def test_leaderboard_failure(monkeypatch):
     monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (1, "", "nope"))
     with pytest.raises(BlockedError):
         leaderboard("c")
+
+
+def test_expect_columns_match(tmp_path):
+    good = tmp_path / "good.csv"
+    good.write_text("submission_id,task\n1,state\n")
+    check_file(str(good), "c", "submission_id,task")
+
+
+def test_expect_columns_rejects_intermediate(tmp_path):
+    intermediate = tmp_path / "state.csv"
+    intermediate.write_text("panel,timestamp\nD7,x\n")
+    with pytest.raises(BlockedError) as exc:
+        check_file(str(intermediate), "c", "submission_id,task")
+    assert "per-task intermediate" in exc.value.next_action
+
+
+def test_blank_row_rejected(tmp_path):
+    bad = tmp_path / "bad.csv"
+    bad.write_text("a,b\n1,2\n\n3,4\n")
+    with pytest.raises(BlockedError) as exc:
+        check_file(str(bad), "c")
+    assert "blank" in str(exc.value).lower()
+
+
+def test_empty_file_rejected(tmp_path):
+    empty = tmp_path / "empty.csv"
+    empty.write_text("")
+    with pytest.raises(BlockedError):
+        check_file(str(empty), "c")
