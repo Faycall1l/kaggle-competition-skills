@@ -15,7 +15,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from common import BlockedError, UsageError, backoff_delays, emit, log, parse_kernel_ref, run, run_cli
+from common import BlockedError, UsageError, backoff_delays, emit, extract_json, log, parse_kernel_ref, run, run_cli
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -72,7 +72,7 @@ def check_allowance(competition: str) -> None:
     if code != 0:
         raise BlockedError(f"allowance check failed: {(err or out).strip()[-200:]}", "verify competition access")
     try:
-        remaining = json.loads(out).get("remaining")
+        remaining = extract_json(out).get("numAllowedNow")
     except ValueError:
         return
     if isinstance(remaining, int) and remaining <= 0:
@@ -143,18 +143,26 @@ def poll(competition: str, ref: str, max_attempts: int = 24) -> dict:
     return {"state": submission_state(competition, ref)}
 
 
+def normalize_status(raw: str) -> str:
+    """Normalize backend enum names (`SubmissionStatus.COMPLETE`) to plain states (`complete`)."""
+    return raw.lower().removeprefix("submissionstatus.")
+
+
 def submission_state(competition: str, ref: str) -> str:
     """Read the current state of one submission from the submissions list."""
     code, out, err = run_cli(["competitions", "submissions", "-c", competition, "--format", "json"], timeout=120)
     if code != 0:
-        raise BlockedError(f"submissions lookup failed: {(err or out).strip()[-200:]}", "verify competition access")
+        combined = (err or out).strip()
+        if "400" in combined and "ListSubmissions" in combined:
+            return "unknown"
+        raise BlockedError(f"submissions lookup failed: {combined[-200:]}", "verify competition access")
     try:
-        rows = json.loads(out)
+        rows = extract_json(out)
     except ValueError:
         return "unknown"
     for row in rows if isinstance(rows, list) else []:
         if str(row.get("ref", "")) == ref or str(row.get("fileName", "")) == ref:
-            return str(row.get("status", "unknown")).lower()
+            return normalize_status(str(row.get("status", "unknown")))
     return "unknown"
 
 

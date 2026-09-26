@@ -13,6 +13,7 @@ from comp_submit import (
     check_file,
     check_kernel_submittable,
     leaderboard,
+    normalize_status,
     poll,
     send,
     submission_state,
@@ -21,7 +22,7 @@ from comp_submit import (
 
 
 def _ok_allowance(monkeypatch):
-    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"remaining": 3}', ""))
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"numAllowedNow": 3}', ""))
 
 
 def test_submit_bad_slug():
@@ -44,9 +45,42 @@ def test_submit_happy(monkeypatch, tmp_path):
 
 
 def test_check_allowance_exhausted(monkeypatch):
-    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"remaining": 0}', ""))
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, '{"numAllowedNow": 0}', ""))
     with pytest.raises(BlockedError):
         check_allowance("titanic")
+
+
+def test_check_allowance_uses_json_flag(monkeypatch):
+    seen = {}
+
+    def fake_run(cmd, timeout):
+        seen["cmd"] = cmd
+        return (0, '{"numAllowedNow": 3}', "")
+
+    monkeypatch.setattr(comp_submit, "run_cli", fake_run)
+    check_allowance("titanic")
+    assert "--json" in seen["cmd"]
+
+
+def test_normalize_status():
+    assert normalize_status("SubmissionStatus.COMPLETE") == "complete"
+    assert normalize_status("SubmissionStatus.ERROR") == "error"
+    assert normalize_status("pending") == "pending"
+
+
+def test_submission_state_enum_prefix(monkeypatch):
+    rows = json.dumps([{"ref": 45668828, "fileName": "submission.csv", "status": "SubmissionStatus.COMPLETE"}])
+    monkeypatch.setattr(comp_submit, "run_cli", lambda cmd, timeout: (0, rows, ""))
+    assert submission_state("c", "45668828") == "complete"
+
+
+def test_submission_state_empty_history_400(monkeypatch):
+    monkeypatch.setattr(
+        comp_submit,
+        "run_cli",
+        lambda cmd, timeout: (1, "", "400 Client Error for url: CompetitionApiService/ListSubmissions"),
+    )
+    assert submission_state("c", "r") == "unknown"
 
 
 def test_check_allowance_cli_failure(monkeypatch):
