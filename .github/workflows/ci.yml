@@ -14,10 +14,13 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install lint and test tools
-        run: pip install pytest black mypy
+        run: pip install pytest black mypy pandas pyarrow numpy
       - name: pytest
         run: python -m pytest tests/ -q
       - name: black
         run: python -m black --check .
       - name: mypy
         run: python -m mypy skills/
+      # Examples import numpy/pandas, whose stubs need a 3.12 grammar to parse.
+      - name: mypy examples
+        run: python -m mypy --python-version 3.12 examples/
