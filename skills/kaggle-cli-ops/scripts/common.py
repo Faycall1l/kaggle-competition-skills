@@ -8,6 +8,7 @@ Stdlib only.
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from typing import Any, NoReturn
 
@@ -85,3 +86,12 @@ def backoff_delays(max_attempts: int, base: float = 5.0, cap: float = 300.0) -> 
         delays.append(min(delay, cap))
         delay *= 2
     return delays
+
+
+def run_cli(args: list[str], timeout: int = 300, binary: str = "kaggle") -> tuple[int, str, str]:
+    """Run the kaggle CLI, capturing output. Never logs secret values."""
+    try:
+        proc = subprocess.run([binary, *args], capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return 127, "", str(exc)
+    return proc.returncode, proc.stdout, proc.stderr
