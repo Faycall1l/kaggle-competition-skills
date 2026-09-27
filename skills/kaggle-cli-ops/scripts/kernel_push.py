@@ -39,17 +39,49 @@ def require_push_flag(flag: str) -> None:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Push a kernel, monitor its run, fetch logs and output.")
-    parser.add_argument("--dir", required=True, help="Kernel folder containing kernel-metadata.json.")
+    parser.add_argument("--dir", default=None, help="Kernel folder containing kernel-metadata.json.")
     parser.add_argument("--timeout", type=int, default=None, help="Limit kernel run time in seconds.")
     parser.add_argument("--accelerator", default=None, help="Accelerator, e.g. NvidiaTeslaT4.")
     parser.add_argument("--no-run", action="store_true", help="Save version without running (upstream main only).")
     parser.add_argument("--no-wait", action="store_true", help="Return after push without monitoring.")
+    parser.add_argument("--resume", default=None, help="owner/slug of an existing run to poll (no push).")
+    parser.add_argument("--version", type=int, default=None, help="Run version for --resume.")
+    parser.add_argument("--title", default="", help="Kernel title for slug resolution with --resume.")
+    parser.add_argument("--output-dir", default=None, help="Download output here when the run completes.")
     return parser
 
 
 def main() -> None:
     args = build_parser().parse_args()
-    emit(push(args.dir, timeout=args.timeout, accelerator=args.accelerator, no_run=args.no_run, wait=not args.no_wait))
+    if args.resume:
+        if args.version is None:
+            raise UsageError("--resume requires --version")
+        emit(resume(args.resume, args.version, title=args.title, output_dir=args.output_dir))
+    else:
+        if not args.dir:
+            raise UsageError("push mode requires --dir")
+        emit(
+            push(
+                args.dir, timeout=args.timeout, accelerator=args.accelerator, no_run=args.no_run, wait=not args.no_wait
+            )
+        )
+
+
+def resume(slug: str, version: int, title: str = "", output_dir: str | None = None) -> dict:
+    """Reattach polling to an existing run (e.g. after a wrapper timeout).
+
+    Long kernels outlive any single wrapper invocation; push with --no-wait,
+    then resume later. Returns the terminal state plus output paths when
+    --output-dir is given and the run completed.
+    """
+    status = poll_status(slug, version, title=title)
+    resolved = status.pop("kernel", slug)
+    result: dict = {"ok": True, "kernel": resolved, "version": version, "status": status}
+    if resolved != slug:
+        result["slug_normalized"] = True
+    if output_dir and status.get("state") == "COMPLETE":
+        result["output"] = download_output(resolved, version, Path(output_dir))
+    return result
 
 
 def push(kernel_dir: str, timeout: int | None, accelerator: str | None, no_run: bool, wait: bool) -> dict:
