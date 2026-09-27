@@ -22,6 +22,13 @@ import numpy as np
 import pandas as pd
 from scipy.optimize import nnls
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Same bootstrap as the v1 builders: this file ships at src/task4/task4_tune.py,
+# so parent.parent is the src/ directory that makes `task4.*` importable.
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 
 def _builder():
     """Import builder helpers lazily; the baselines src/ tree is a runtime dependency."""
