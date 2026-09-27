@@ -116,7 +116,7 @@ def main() -> None:
         best_lambda, best_score = tune_panel(path_ids, A, counts, base, scored_idx, lambdas)
         print(f"[{panel}] lambda*={best_lambda} S_link={best_score:.4f}", flush=True)
         report.append({"panel": panel, "lambda": best_lambda, "S_link": best_score})
-        f = solve_lambda(A, counts, base, best_lambda)
+        f = solve_lambda(A[scored_idx, :], counts, base, best_lambda)
         frame = paths[["path_id", "origin_zone", "destination_zone"]].copy()
         frame["panel"] = panel
         prior = released_prior(release, panel, args.split)
