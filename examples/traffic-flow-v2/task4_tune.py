@@ -65,11 +65,15 @@ def tune_panel(
     scored_idx: list[int],
     lambdas: list[float],
 ) -> tuple[float, float]:
-    """Return (best_lambda, best S_link) over the grid."""
+    """Return (best_lambda, best S_link) over the grid.
+
+    The solve runs on the scored-link subset, matching the builder: unobserved
+    connectors carry no measured counts and must not enter the fit.
+    """
     A_score = A[scored_idx, :]
     best_lambda, best_score = lambdas[0], -1.0
     for reg_lambda in lambdas:
-        score = s_link(A_score, counts, solve_lambda(A, counts, base, reg_lambda))
+        score = s_link(A_score, counts, solve_lambda(A_score, counts, base, reg_lambda))
         if score > best_score:
             best_lambda, best_score = reg_lambda, score
     return best_lambda, best_score
