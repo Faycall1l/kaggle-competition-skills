@@ -45,3 +45,12 @@ def test_tune_panel_regularization_can_win():
     base = np.full(3, 2.0)
     best_lambda, _ = tune_panel(["a", "b", "c"], A, counts, base, [0, 1, 2, 3, 4, 5], [0.0, 0.5, 5.0])
     assert best_lambda in (0.0, 0.5, 5.0)
+
+
+def test_tune_panel_solves_scored_subset_only():
+    """Full operator rows without counts must not enter the fit (live failure)."""
+    A = np.array([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    counts = np.array([5.0, 5.0])
+    base = np.array([5.0, 5.0])
+    best_lambda, best_score = tune_panel(["a", "b"], A, counts, base, [0, 1], [0.0, 0.05])
+    assert best_score == 1.0
