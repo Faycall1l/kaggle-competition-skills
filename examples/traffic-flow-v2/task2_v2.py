@@ -20,6 +20,13 @@ from pathlib import Path
 
 import pandas as pd
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Same bootstrap as the v1 builders: this file ships at src/task2/task2_v2.py,
+# so parent.parent is the src/ directory that makes `task2.*` importable.
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 
 def _v1():
     """Import v1 helpers lazily; the baselines src/ tree is a runtime dependency."""
