@@ -30,8 +30,10 @@ skill directory.
 |---|---|---|
 | Download competition data, scaffold workspace | `competition.md` | `scripts/comp_init.py <slug>` |
 | Push/monitor notebook, fetch logs and output | `kernels.md` | `scripts/kernel_push.py` |
+| Reattach to a long run after timeout | `experiments.md` | `scripts/kernel_push.py --resume <slug> --version <N>` |
 | Submit predictions, poll status, check leaderboard | `competition.md` | `scripts/comp_submit.py` |
 | Auth, quota, environment preflight | `quota-auth.md` | `scripts/doctor.py` |
+| Record attempts and scores per competition | `experiments.md` | `scripts/exp.py` |
 | Failure diagnosis (mounts, 403s, JSON, encoding) | `troubleshooting.md` | — |
 
 ## Instructions
