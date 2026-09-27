@@ -23,6 +23,13 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+import sys as _sys
+from pathlib import Path as _Path
+
+# Same bootstrap as the v1 builders: this file ships at src/task1/task1_v2.py,
+# so parent.parent is the src/ directory that makes `task1.*` importable.
+_sys.path.insert(0, str(_Path(__file__).resolve().parent.parent))
+
 
 def _baseline():
     """Import baseline helpers lazily; the baselines src tree is a runtime dependency."""
