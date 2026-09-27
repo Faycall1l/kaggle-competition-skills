@@ -18,6 +18,7 @@ from kernel_push import (
     read_kernel_slug,
     require_push_flag,
     resolve_kernel_ref,
+    resume,
 )
 
 
@@ -126,6 +127,32 @@ def test_resolve_no_match(monkeypatch):
     monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "[]", ""))
     with pytest.raises(BlockedError):
         resolve_kernel_ref("Missing")
+
+
+def test_resume_complete_downloads_output(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        kernel_push, "poll_status", lambda slug, version, title="": {"state": "COMPLETE", "kernel": slug}
+    )
+    (tmp_path / "f.csv").write_text("x")
+    monkeypatch.setattr(kernel_push, "download_output", lambda s, v, d: {"dir": str(d), "files": ["f.csv"]})
+    result = resume("o/s", 2, output_dir=str(tmp_path))
+    assert result["status"] == {"state": "COMPLETE"}
+    assert result["output"]["files"] == ["f.csv"]
+    assert "slug_normalized" not in result
+
+
+def test_resume_normalizes_slug(monkeypatch):
+    monkeypatch.setattr(
+        kernel_push, "poll_status", lambda slug, version, title="": {"state": "COMPLETE", "kernel": "real/s"}
+    )
+    result = resume("wrong/s", 1)
+    assert result["kernel"] == "real/s" and result["slug_normalized"] is True
+
+
+def test_resume_skips_output_on_error(monkeypatch):
+    monkeypatch.setattr(kernel_push, "poll_status", lambda slug, version, title="": {"state": "ERROR", "kernel": slug})
+    result = resume("o/s", 1, output_dir="/tmp")
+    assert result["status"]["state"] == "ERROR" and "output" not in result
 
 
 def test_require_push_flag_present(monkeypatch):
