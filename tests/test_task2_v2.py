@@ -88,3 +88,27 @@ def test_dissipation_clears_late_steps():
     hist = _history({"A": [True] * 12, "B": [True] * 6 + [False] * 6, "C": [True] * 6 + [False] * 6})
     out = forecast_window(hist, _template(("A",)), THRESH, TOPO)
     assert out.queue_pred.tolist() == [1, 1, 0, 0, 0, 0]
+
+
+def test_trend_onset_fires_without_queued_links():
+    speeds = [100.0, 96.0, 92.0, 88.0, 84.0, 80.0, 76.0, 72.0, 68.0, 64.0, 62.0, 61.0]
+    rows = []
+    base = pd.Timestamp("2031-03-01T00:00:00Z")
+    for k, speed in enumerate(speeds):
+        rows.append(
+            {
+                "timestamp": base + pd.Timedelta(minutes=5 * k),
+                "link_id": "B",
+                "speed_kmh": speed,
+                "is_score_eligible": True,
+            }
+        )
+    hist = pd.DataFrame(rows)
+    out = forecast_window(hist, _template(("B",)), THRESH, TOPO)
+    assert out.queue_pred.tolist() == [1] * 6
+
+
+def test_flat_history_no_trend_fire():
+    hist = _history({"B": [False] * 12})
+    out = forecast_window(hist, _template(("B",)), THRESH, TOPO)
+    assert out.queue_pred.tolist() == [0] * 6
