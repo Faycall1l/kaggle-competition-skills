@@ -18,6 +18,7 @@ import argparse
 from collections import deque
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 import sys as _sys
@@ -84,6 +85,8 @@ def forecast_window(
     threshold: dict[str, float],
     topology: dict[str, dict[str, list[str]]],
     onset_radius: int = 2,
+    trend_slope: float = -3.0,
+    trend_margin: float = 1.5,
 ) -> pd.DataFrame:
     """Predict queue_pred for one window's template rows.
 
@@ -104,6 +107,21 @@ def forecast_window(
     queued_early = set(hist.loc[hist.step <= last - 6].query("queued").link_id) if last >= 6 else set()
     growing = len(queued_now) > len(queued_early)
     latched = set(hist.loc[hist.step >= last - 1].query("queued").link_id)
+    # Trend onset: links decelerating steeply toward the threshold without
+    # crossing it. The horizon must contain queue somewhere; a collapsing speed
+    # profile is the only visible precursor when no link is queued yet.
+    trend_links: set[str] = set()
+    for link, group in hist.groupby("link_id", sort=False):
+        speeds = pd.to_numeric(group.sort_values("step").speed_kmh, errors="coerce").to_numpy(dtype=float)
+        finite = np.isfinite(speeds)
+        if finite.sum() < 6:
+            continue
+        x = np.flatnonzero(finite).astype(float)
+        slope = float(np.polyfit(x, speeds[finite], 1)[0])
+        limit = threshold.get(str(link), 63.0)
+        if slope < trend_slope and np.nanmin(speeds) < trend_margin * limit:
+            trend_links.add(str(link))
+    trend_links -= queued_now
     # Upstream neighbourhood of currently queued links (onset candidates).
     onset_links: set[str] = set()
     if growing:
@@ -123,7 +141,7 @@ def forecast_window(
         link = row.link_id
         if link in queued_now or link in latched:
             preds.append(1)
-        elif link in onset_links:
+        elif link in onset_links or link in trend_links:
             preds.append(1)
         else:
             preds.append(0)
@@ -146,6 +164,8 @@ def main() -> None:
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--panel", action="append", help="build only selected panel(s)")
     ap.add_argument("--onset-radius", type=int, default=2)
+    ap.add_argument("--trend-slope", type=float, default=-3.0, help="km/h per 5-minute step")
+    ap.add_argument("--trend-margin", type=float, default=1.5, help="multiple of queue threshold")
     args = ap.parse_args()
     root = args.release_root.resolve()
     splits = ["train", "validation"] if args.split == "all" else [args.split]
@@ -172,7 +192,15 @@ def main() -> None:
         if hist.empty:
             continue
         targets.append(
-            forecast_window(hist, group, thresholds_by_panel[panel], topology_by_panel[panel], args.onset_radius)
+            forecast_window(
+                hist,
+                group,
+                thresholds_by_panel[panel],
+                topology_by_panel[panel],
+                args.onset_radius,
+                args.trend_slope,
+                args.trend_margin,
+            )
         )
     if not targets:
         raise RuntimeError("No queue v2 rows were generated")
