@@ -32,7 +32,7 @@ quota, or restart multi-GB downloads.
 | `ValueError: too many values to unpack` on delete | Versioned ref passed to delete | `kaggle kernels delete <owner/slug>` — versions are not deletable |
 | `cp932` codec crash on `kernels output` (Windows) | Non-ASCII logs on legacy console | Set UTF-8 locale or fetch logs via API |
 | No `cancel` command for runaway session | Not exposed in CLI | Stop the session in the web UI |
-| Kernel mounts a stale dataset version | Dataset version propagation lags; a kernel pushed within a minute of versioning snapshots the previous version | Verify with a single-file download or a cheap probe kernel printing the file hash, then re-push |
+| Kernel mounts a stale dataset version | Dataset mounts pin to the version attached when the kernel was created; later dataset versions do not reach existing kernels | Verify with a probe kernel printing the file hash; run updated code under a new kernel slug |
 
 ## Submissions
 
