@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install lint and test tools
-        run: pip install pytest black mypy pandas pyarrow numpy scipy
+        run: pip install pytest black mypy pandas pyarrow numpy scipy scikit-learn
       - name: pytest
         run: python -m pytest tests/ -q
       - name: black
