@@ -42,6 +42,12 @@ script plus its versioned runs.
 - The CLI sends only the `code_file` text. Sibling files in the push folder
   are NOT uploaded. Bundle helpers via a dataset source, or inline them into
   the notebook.
+- Dataset mounts can lag published versions: a kernel may mount the previous
+  dataset version even when the download endpoint already serves the new one.
+  For code under active iteration, embed the files in a notebook bootstrap
+  cell that writes them to `/kaggle/working/_bundle/` and prepends it to
+  `sys.path`. The code then versions with the kernel deterministically; keep
+  stable third-party code on the dataset source.
 - Scripts running on Kaggle resolve their own location: a helper shipped at
   `src/task/task.py` must `sys.path.insert` its `parent.parent`, mirroring
   the v1 baseline builders. The run working directory is `/kaggle/working`
