@@ -164,18 +164,23 @@ def sample_training_rows(
     max_origins: int = 400,
     before: str | None = None,
     after: str | None = None,
+    list_files=None,  # type: ignore[no-untyped-def]
 ) -> tuple[np.ndarray, np.ndarray]:
     """Sample (features, labels) from unmasked train observations.
 
     Origins stride through time deterministically; labels are the threshold
     rule on the following 6 steps. `before`/`after` (YYYY-MM-DD) restrict
     origins for time-split evaluation. Panel-agnostic: no link or panel ids
-    leak into features, so one global model serves all panels.
+    leak into features, so one global model serves all panels. `list_files`
+    overrides the release file lookup (fixture tests).
     """
-    from task1.baseline_task1_historical_mean import files as _train_files
+    if list_files is None:
+        from task1.baseline_task1_historical_mean import files as _train_files
+
+        list_files = _train_files
 
     frames = []
-    for path in _train_files(panel_dir, "train"):
+    for path in list_files(panel_dir, "train"):
         frames.append(pd.read_parquet(path, columns=["timestamp", "link_id", "speed_kmh", "is_score_eligible"]))
     if not frames:
         return np.zeros((0, len(FEATURE_COLUMNS))), np.zeros(0, dtype=int)
@@ -185,42 +190,46 @@ def sample_training_rows(
     frame = frame.sort_values(["link_id", "timestamp"])
     frame["speed"] = pd.to_numeric(frame.speed_kmh, errors="coerce")
     frame["eligible"] = frame.is_score_eligible.astype(bool)
-    series: dict[str, pd.DataFrame] = {link: group for link, group in frame.groupby("link_id", sort=False)}
-    X_rows: list[list[float]] = []
-    y_rows: list[int] = []
-    for link, group in series.items():
+
+    def _window_arrays(group: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray] | None:
         speeds = group.speed.to_numpy()
         eligible = group.eligible.to_numpy(dtype=bool)
-        times = group.timestamp.to_numpy()
+        times = pd.DatetimeIndex(group.timestamp).tz_convert(None).to_numpy()
         if before is not None:
-            cutoff = np.datetime64(before)
-            keep = times < cutoff
-            if keep.sum() < HISTORY_STEPS + HORIZON_STEPS:
-                continue
+            keep = times < np.datetime64(before)
             speeds, eligible, times = speeds[keep], eligible[keep], times[keep]
         if after is not None:
-            cutoff = np.datetime64(after)
-            keep = times >= cutoff
-            if keep.sum() < HISTORY_STEPS + HORIZON_STEPS:
-                continue
+            keep = times >= np.datetime64(after)
             speeds, eligible, times = speeds[keep], eligible[keep], times[keep]
+        if len(speeds) < HISTORY_STEPS + HORIZON_STEPS:
+            return None
+        return speeds, eligible, times
+
+    series: dict[str, pd.DataFrame] = {link: group for link, group in frame.groupby("link_id", sort=False)}
+    filtered: dict[str, tuple[np.ndarray, np.ndarray, np.ndarray]] = {}
+    for link, group in series.items():
+        arrays = _window_arrays(group)
+        if arrays is not None:
+            filtered[str(link)] = arrays
+    # Note: neighbor lookup aligns by position, assuming the shared 5-minute
+    # calendar (missing reports are NaN rows, not missing rows).
+    X_rows: list[list[float]] = []
+    y_rows: list[int] = []
+    for link, (speeds, eligible, times) in filtered.items():
         limit = threshold.get(str(link), 63.0)
         neighbours = topology.get(str(link), {}).get("upstream", []) + topology.get(str(link), {}).get("downstream", [])
-        origins = range(0, len(group) - HISTORY_STEPS - HORIZON_STEPS + 1, stride)[:max_origins]
+        origins = range(0, len(speeds) - HISTORY_STEPS - HORIZON_STEPS + 1, stride)[:max_origins]
         for origin in origins:
             last = origin + HISTORY_STEPS - 1
             near_frac, near_hops = 0.0, 6
             if neighbours:
                 states = []
                 for other in neighbours:
-                    if other in series:
-                        other_frame = series[other]
-                        pos = other_frame.timestamp.searchsorted(times[last])
-                        if pos < len(other_frame):
-                            osp = other_frame.speed.to_numpy()[pos]
-                            oel = other_frame.eligible.to_numpy(dtype=bool)[pos]
-                            olim = threshold.get(other, 63.0)
-                            states.append(bool(np.isfinite(osp) and osp <= olim and oel))
+                    if other in filtered:
+                        osp = filtered[other][0][last]
+                        oel = filtered[other][1][last]
+                        olim = threshold.get(other, 63.0)
+                        states.append(bool(np.isfinite(osp) and osp <= olim and oel))
                 if states:
                     near_frac = float(sum(states) / len(states))
                     near_hops = 1 if any(states) else 6
