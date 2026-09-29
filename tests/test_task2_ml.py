@@ -51,3 +51,43 @@ def test_train_classifier_separable():
     y = np.array([0] * 50 + [1] * 50)
     model = train_classifier(X, y)
     assert (model.predict(X) == y).mean() > 0.95
+
+
+def _fixture_panel(tmp_path):
+    train = tmp_path / "train" / "mainline_states"
+    train.mkdir(parents=True)
+    base = pd.Timestamp("2030-06-01T00:00:00Z")
+    rows = []
+    for link in ("A", "B"):
+        for k in range(60):
+            queued = link == "B" and 30 <= k < 42
+            rows.append(
+                {
+                    "timestamp": (base + pd.Timedelta(minutes=5 * k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "link_id": link,
+                    "speed_kmh": 30.0 if queued else 100.0,
+                    "is_score_eligible": True,
+                }
+            )
+    pd.DataFrame(rows).to_parquet(train / "day.parquet")
+    return tmp_path
+
+
+def test_sample_before_after_split(tmp_path):
+    from task2_ml import sample_training_rows
+
+    panel = _fixture_panel(tmp_path)
+    topo = {"A": {"upstream": [], "downstream": ["B"]}, "B": {"upstream": ["A"], "downstream": []}}
+    thresh = {"A": 60.0, "B": 60.0}
+    lister = lambda panel_dir, split: sorted((panel_dir / split / "mainline_states").glob("**/*.parquet"))
+    X_all, y_all = sample_training_rows(panel, thresh, topo, stride=6, max_origins=50, list_files=lister)
+    assert len(X_all) > 0 and X_all.shape[1] == 10
+    assert set(y_all.tolist()) == {0, 1}
+    X_early, _ = sample_training_rows(
+        panel, thresh, topo, stride=6, max_origins=50, before="2030-06-01T02:00:00", list_files=lister
+    )
+    assert 0 < len(X_early) < len(X_all)
+    X_late, _ = sample_training_rows(
+        panel, thresh, topo, stride=6, max_origins=50, after="2030-06-01T02:00:00", list_files=lister
+    )
+    assert len(X_late) > 0
