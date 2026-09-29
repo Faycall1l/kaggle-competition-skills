@@ -39,6 +39,13 @@ script plus its versioned runs.
 
 - Internet defaults from metadata; code competitions require
   `enable_internet=false` or the notebook is ineligible for submission.
+- The CLI sends only the `code_file` text. Sibling files in the push folder
+  are NOT uploaded. Bundle helpers via a dataset source, or inline them into
+  the notebook.
+- Scripts running on Kaggle resolve their own location: a helper shipped at
+  `src/task/task.py` must `sys.path.insert` its `parent.parent`, mirroring
+  the v1 baseline builders. The run working directory is `/kaggle/working`
+  and carries no import context.
 - Data sources attach via metadata; verify mounts with
   `Path('/kaggle/input').rglob(name)` — paths vary
   (`/kaggle/input/<slug>` vs `/kaggle/input/competitions/<slug>/`).
