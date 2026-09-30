@@ -53,6 +53,21 @@ def test_train_classifier_separable():
     assert (model.predict(X) == y).mean() > 0.95
 
 
+def test_definitions_precede_first_use():
+    """Regression: predict_windows must be defined before main() runs.
+
+    Import-based tests bind every def and cannot catch use-before-def at
+    script execution. Parse the file and enforce ordering instead.
+    """
+    import ast
+
+    path = Path(__file__).resolve().parent.parent / "examples" / "traffic-flow-v2" / "task2_ml.py"
+    tree = ast.parse(path.read_text())
+    order = [node.name for node in tree.body if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    assert "predict_windows" in order and "main" in order
+    assert order.index("predict_windows") < order.index("main")
+
+
 def _fixture_panel(tmp_path):
     train = tmp_path / "train" / "mainline_states"
     train.mkdir(parents=True)

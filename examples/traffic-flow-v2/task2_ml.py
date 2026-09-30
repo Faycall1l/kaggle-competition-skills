@@ -262,73 +262,6 @@ def precision_recall_f1(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, flo
     }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser(description="Task 2 ML: train pseudo-labeled classifier, predict windows.")
-    ap.add_argument("mode", choices=["train", "predict"])
-    ap.add_argument("--release-root", type=Path, required=True)
-    ap.add_argument("--split", default="validation", help="predict split (predict mode)")
-    ap.add_argument("--panel", action="append", help="restrict to panels")
-    ap.add_argument("--stride", type=int, default=48)
-    ap.add_argument("--max-origins", type=int, default=400)
-    ap.add_argument("--eval-before", default=None, help="train origins before YYYY-MM-DD; rest is eval")
-    ap.add_argument("--model", type=Path, default=Path("queue_model.pkl"))
-    ap.add_argument("--output", type=Path, default=Path("queue_ml.csv"))
-    args = ap.parse_args()
-    read_queue_template, read_window_history, read_window_index, thresholds = _v1()
-    from task1.baseline_task1_historical_mean import HERE as _here
-
-    panels_manifest = json.loads((_here / "config" / "corridors.json").read_text(encoding="utf-8"))
-    panels = [p["corridor_id"] for p in panels_manifest["panels"]]
-    if args.panel:
-        panels = [p for p in panels if p in set(args.panel)]
-    release = args.release_root.resolve()
-
-    def panel_inputs(panel: str) -> tuple[dict[str, float], dict]:
-        panel_dir = release / "corridors" / panel
-        links = pd.read_csv(panel_dir / "network" / "links.csv")
-        links["link_id"] = links.link_id.astype(str)
-        threshold, _ = thresholds(panel_dir, links)
-        return threshold, _topology(panel_dir)
-
-    def sample_all(before: str | None, after: str | None) -> tuple[np.ndarray, np.ndarray]:
-        parts = [
-            sample_training_rows(
-                release / "corridors" / panel, *panel_inputs(panel), args.stride, args.max_origins, before, after
-            )
-            for panel in panels
-        ]
-        return np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
-
-    if args.mode == "train":
-        if args.eval_before:
-            X, y = sample_all(args.eval_before, None)
-            model = train_classifier(X, y)
-            Xe, ye = sample_all(None, args.eval_before)
-            scores = precision_recall_f1(ye, model.predict(Xe))
-            print("eval: " + " ".join(f"{k}={v:.4f}" for k, v in scores.items()), flush=True)
-        else:
-            X, y = sample_all(None, None)
-            model = train_classifier(X, y)
-        args.model.parent.mkdir(parents=True, exist_ok=True)
-        with open(args.model, "wb") as handle:
-            pickle.dump(model, handle)
-        print(f"Wrote {args.model.resolve()}")
-    else:
-        with open(args.model, "rb") as model_handle:
-            model = pickle.load(model_handle)
-        threshold, topology = {}, {}
-        for panel in panels:
-            threshold[panel], topology[panel] = panel_inputs(panel)
-        out = predict_windows(model, release, [args.split], threshold, topology)
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        out.to_csv(args.output, index=False)
-        print(f"Wrote {len(out):,} rows to {args.output.resolve()}")
-
-
-if __name__ == "__main__":
-    main()
-
-
 def predict_windows(
     model,  # type: ignore[no-untyped-def]
     root: Path,
@@ -426,3 +359,70 @@ def predict_windows(
     if not targets:
         raise RuntimeError("No queue ML rows were generated")
     return pd.concat(targets, ignore_index=True).drop_duplicates(["window_id", "timestamp", "link_id"])
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Task 2 ML: train pseudo-labeled classifier, predict windows.")
+    ap.add_argument("mode", choices=["train", "predict"])
+    ap.add_argument("--release-root", type=Path, required=True)
+    ap.add_argument("--split", default="validation", help="predict split (predict mode)")
+    ap.add_argument("--panel", action="append", help="restrict to panels")
+    ap.add_argument("--stride", type=int, default=48)
+    ap.add_argument("--max-origins", type=int, default=400)
+    ap.add_argument("--eval-before", default=None, help="train origins before YYYY-MM-DD; rest is eval")
+    ap.add_argument("--model", type=Path, default=Path("queue_model.pkl"))
+    ap.add_argument("--output", type=Path, default=Path("queue_ml.csv"))
+    args = ap.parse_args()
+    read_queue_template, read_window_history, read_window_index, thresholds = _v1()
+    from task1.baseline_task1_historical_mean import HERE as _here
+
+    panels_manifest = json.loads((_here / "config" / "corridors.json").read_text(encoding="utf-8"))
+    panels = [p["corridor_id"] for p in panels_manifest["panels"]]
+    if args.panel:
+        panels = [p for p in panels if p in set(args.panel)]
+    release = args.release_root.resolve()
+
+    def panel_inputs(panel: str) -> tuple[dict[str, float], dict]:
+        panel_dir = release / "corridors" / panel
+        links = pd.read_csv(panel_dir / "network" / "links.csv")
+        links["link_id"] = links.link_id.astype(str)
+        threshold, _ = thresholds(panel_dir, links)
+        return threshold, _topology(panel_dir)
+
+    def sample_all(before: str | None, after: str | None) -> tuple[np.ndarray, np.ndarray]:
+        parts = [
+            sample_training_rows(
+                release / "corridors" / panel, *panel_inputs(panel), args.stride, args.max_origins, before, after
+            )
+            for panel in panels
+        ]
+        return np.concatenate([p[0] for p in parts]), np.concatenate([p[1] for p in parts])
+
+    if args.mode == "train":
+        if args.eval_before:
+            X, y = sample_all(args.eval_before, None)
+            model = train_classifier(X, y)
+            Xe, ye = sample_all(None, args.eval_before)
+            scores = precision_recall_f1(ye, model.predict(Xe))
+            print("eval: " + " ".join(f"{k}={v:.4f}" for k, v in scores.items()), flush=True)
+        else:
+            X, y = sample_all(None, None)
+            model = train_classifier(X, y)
+        args.model.parent.mkdir(parents=True, exist_ok=True)
+        with open(args.model, "wb") as handle:
+            pickle.dump(model, handle)
+        print(f"Wrote {args.model.resolve()}")
+    else:
+        with open(args.model, "rb") as model_handle:
+            model = pickle.load(model_handle)
+        threshold, topology = {}, {}
+        for panel in panels:
+            threshold[panel], topology[panel] = panel_inputs(panel)
+        out = predict_windows(model, release, [args.split], threshold, topology)
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        out.to_csv(args.output, index=False)
+        print(f"Wrote {len(out):,} rows to {args.output.resolve()}")
+
+
+if __name__ == "__main__":
+    main()
