@@ -53,6 +53,31 @@ def test_train_classifier_separable():
     assert (model.predict(X) == y).mean() > 0.95
 
 
+def test_expected_positives_growth():
+    import pandas as pd
+
+    from task2_ml import expected_positives
+
+    rows = []
+    for step in range(12):
+        for link, queued in (("A", step >= 10), ("B", step >= 4)):
+            rows.append(
+                {"step": step, "link_id": link, "speed_kmh": 30.0 if queued else 100.0, "is_score_eligible": True}
+            )
+    hist = pd.DataFrame(rows)
+    assert expected_positives(hist, {"A": 60.0, "B": 60.0}, 3.0, 2) >= 2
+
+
+def test_expected_positives_floor():
+    import pandas as pd
+
+    from task2_ml import expected_positives
+
+    rows = [{"step": s, "link_id": "A", "speed_kmh": 100.0, "is_score_eligible": True} for s in range(12)]
+    hist = pd.DataFrame(rows)
+    assert expected_positives(hist, {"A": 60.0}, 3.0, 2) == 2
+
+
 def test_definitions_precede_first_use():
     """Regression: predict_windows must be defined before main() runs.
 
