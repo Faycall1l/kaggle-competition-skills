@@ -53,6 +53,14 @@ def test_train_classifier_separable():
     assert (model.predict(X) == y).mean() > 0.95
 
 
+def test_train_classifier_balanced():
+    rng = np.random.default_rng(1)
+    X = np.vstack([rng.normal(0, 1, (90, 10)), rng.normal(5, 1, (10, 10))])
+    y = np.array([0] * 90 + [1] * 10)
+    model = train_classifier(X, y, class_weight="balanced")
+    assert (model.predict(X[90:]) == 1).mean() > 0.5
+
+
 def test_decision_threshold_shifts_positive_rate():
     from task2_ml import predict_windows
 
@@ -137,3 +145,39 @@ def test_sample_before_after_split(tmp_path):
         panel, thresh, topo, stride=6, max_origins=50, after="2030-06-01T02:00:00", list_files=lister
     )
     assert len(X_late) > 0
+
+
+def _fixture_panel_v2(tmp_path):
+    train = tmp_path / "train" / "mainline_states"
+    train.mkdir(parents=True)
+    base = pd.Timestamp("2030-06-01T00:00:00Z")
+    rows = []
+    for link in ("A", "B"):
+        for k in range(60):
+            queued = link == "B" and 30 <= k < 42
+            rows.append(
+                {
+                    "timestamp": (base + pd.Timedelta(minutes=5 * k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                    "link_id": link,
+                    "speed_kmh": 30.0 if queued else 100.0,
+                    "flow_vph": 500.0 if queued else 2000.0,
+                    "occupancy": 25.0 if queued else 8.0,
+                    "is_score_eligible": True,
+                }
+            )
+    pd.DataFrame(rows).to_parquet(train / "day.parquet")
+    return tmp_path
+
+
+def test_sample_v2_width_and_channels(tmp_path):
+    from task2_ml import FEATURE_COLUMNS_V2, sample_training_rows
+
+    panel = _fixture_panel_v2(tmp_path)
+    topo = {"A": {"upstream": [], "downstream": ["B"]}, "B": {"upstream": ["A"], "downstream": []}}
+    thresh = {"A": 60.0, "B": 60.0}
+    lister = lambda panel_dir, split: sorted((panel_dir / split / "mainline_states").glob("**/*.parquet"))
+    X, y = sample_training_rows(panel, thresh, topo, stride=6, max_origins=50, list_files=lister, feature_set="v2")
+    assert X.shape[1] == len(FEATURE_COLUMNS_V2) == 20
+    assert set(y.tolist()) == {0, 1}
+    flow_idx = FEATURE_COLUMNS_V2.index("mean_flow")
+    assert X[:, flow_idx].max() > 1000.0
