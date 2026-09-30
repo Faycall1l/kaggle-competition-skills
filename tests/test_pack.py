@@ -31,3 +31,14 @@ def test_bootstrap_rejects_syntax_error(tmp_path):
 
     with pytest.raises(SyntaxError):
         build_bootstrap({"broken.py": broken}, {})
+
+
+def test_bootstrap_base64_roundtrip_with_backslashes(tmp_path):
+    tricky = tmp_path / "tricky.py"
+    tricky.write_text('import re\nPAT = re.compile("a\\\\|b")\nESC = "x\\\\ny"\n')
+    (cell_src,) = [line for line in build_bootstrap({"tricky.py": tricky}, {}) if line.startswith("_EMBED")]
+    namespace: dict = {}
+    exec(compile("_BOGUS = 0\n" + cell_src.replace("_EMBED =", "_PAY =", 1), "<cell>", "exec"), namespace)
+    import base64
+
+    assert base64.b64decode(namespace["_PAY"]["tricky.py"]).decode() == tricky.read_text()
