@@ -262,14 +262,51 @@ def precision_recall_f1(y_true: np.ndarray, y_pred: np.ndarray) -> dict[str, flo
     }
 
 
+def expected_positives(hist: pd.DataFrame, threshold: dict[str, float], growth_cap: float, floor: int) -> int:
+    """Estimate queued cells in the horizon from history growth.
+
+    Counts threshold-rule queued links now vs 6 steps ago; scales by the
+    growth ratio clamped to [1/growth_cap, growth_cap], floored because every
+    scored window contains queue somewhere.
+    """
+    now = hist.loc[hist.step == hist.step.max()]
+    then = hist.loc[hist.step == max(hist.step.min(), hist.step.max() - 6)]
+    queued_now = int(
+        (
+            (pd.to_numeric(now.speed_kmh, errors="coerce") <= now.link_id.map(threshold).fillna(63.0))
+            & now.is_score_eligible.astype(bool)
+        ).sum()
+    )
+    queued_then = int(
+        (
+            (pd.to_numeric(then.speed_kmh, errors="coerce") <= then.link_id.map(threshold).fillna(63.0))
+            & then.is_score_eligible.astype(bool)
+        ).sum()
+    )
+    if queued_then == 0:
+        return max(queued_now, floor)
+    growth = min(max(queued_now / queued_then, 1.0 / growth_cap), growth_cap)
+    return max(int(round(queued_now * growth)), floor)
+
+
 def predict_windows(
     model,  # type: ignore[no-untyped-def]
     root: Path,
     splits: list[str],
     threshold: dict[str, dict[str, float]],
     topology: dict[str, dict],
+    calibrate: bool = False,
+    growth_cap: float = 3.0,
+    floor: int = 2,
 ) -> pd.DataFrame:
-    """Predict queue_pred for released windows. Returns v1-compatible rows."""
+    """Predict queue_pred for released windows. Returns v1-compatible rows.
+
+    Default is the fixed 0.5 decision threshold. With calibrate=True, each
+    window's expected positive count is estimated from queue growth in
+    history (current queued count scaled by the now-vs-6-steps-ago ratio,
+    clamped, with a floor because every scored window contains queue), and
+    the top-K cells by predicted probability are labeled 1.
+    """
     from task2.build_task2_persistence_submission import read_queue_template
 
     _, read_window_history, read_window_index, _ = _v1()
@@ -354,7 +391,15 @@ def predict_windows(
             meta_rows.append((row.window_id, stamp, link))
         preds = model.predict(np.array(feat_rows, dtype=float))
         frame = pd.DataFrame(meta_rows, columns=["window_id", "timestamp", "link_id"])
-        frame["queue_pred"] = [int(p) for p in preds]
+        if calibrate:
+            proba = model.predict_proba(np.array(feat_rows, dtype=float))[:, 1]
+            expected = expected_positives(hist, threshold[panel], growth_cap, floor)
+            order = np.argsort(-proba, kind="stable")
+            labels = np.zeros(len(feat_rows), dtype=int)
+            labels[order[: min(expected, len(feat_rows))]] = 1
+            frame["queue_pred"] = labels
+        else:
+            frame["queue_pred"] = [int(p) for p in preds]
         targets.append(frame)
     if not targets:
         raise RuntimeError("No queue ML rows were generated")
@@ -372,6 +417,9 @@ def main() -> None:
     ap.add_argument("--eval-before", default=None, help="train origins before YYYY-MM-DD; rest is eval")
     ap.add_argument("--model", type=Path, default=Path("queue_model.pkl"))
     ap.add_argument("--output", type=Path, default=Path("queue_ml.csv"))
+    ap.add_argument("--calibrate", action="store_true", help="top-K by probability instead of 0.5 threshold")
+    ap.add_argument("--growth-cap", type=float, default=3.0)
+    ap.add_argument("--floor", type=int, default=2)
     args = ap.parse_args()
     read_queue_template, read_window_history, read_window_index, thresholds = _v1()
     from task1.baseline_task1_historical_mean import HERE as _here
@@ -418,7 +466,9 @@ def main() -> None:
         threshold, topology = {}, {}
         for panel in panels:
             threshold[panel], topology[panel] = panel_inputs(panel)
-        out = predict_windows(model, release, [args.split], threshold, topology)
+        out = predict_windows(
+            model, release, [args.split], threshold, topology, args.calibrate, args.growth_cap, args.floor
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(args.output, index=False)
         print(f"Wrote {len(out):,} rows to {args.output.resolve()}")
