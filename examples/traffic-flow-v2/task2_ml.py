@@ -298,6 +298,7 @@ def predict_windows(
     calibrate: bool = False,
     growth_cap: float = 3.0,
     floor: int = 2,
+    decision_threshold: float = 0.5,
 ) -> pd.DataFrame:
     """Predict queue_pred for released windows. Returns v1-compatible rows.
 
@@ -389,7 +390,7 @@ def predict_windows(
                 )
             )
             meta_rows.append((row.window_id, stamp, link))
-        preds = model.predict(np.array(feat_rows, dtype=float))
+        preds = (model.predict_proba(np.array(feat_rows, dtype=float))[:, 1] >= decision_threshold).astype(int)
         frame = pd.DataFrame(meta_rows, columns=["window_id", "timestamp", "link_id"])
         if calibrate:
             proba = model.predict_proba(np.array(feat_rows, dtype=float))[:, 1]
@@ -417,7 +418,8 @@ def main() -> None:
     ap.add_argument("--eval-before", default=None, help="train origins before YYYY-MM-DD; rest is eval")
     ap.add_argument("--model", type=Path, default=Path("queue_model.pkl"))
     ap.add_argument("--output", type=Path, default=Path("queue_ml.csv"))
-    ap.add_argument("--calibrate", action="store_true", help="top-K by probability instead of 0.5 threshold")
+    ap.add_argument("--calibrate", action="store_true", help="top-K by probability instead of threshold")
+    ap.add_argument("--threshold", type=float, default=0.5, help="decision threshold (ignored with --calibrate)")
     ap.add_argument("--growth-cap", type=float, default=3.0)
     ap.add_argument("--floor", type=int, default=2)
     args = ap.parse_args()
@@ -467,7 +469,15 @@ def main() -> None:
         for panel in panels:
             threshold[panel], topology[panel] = panel_inputs(panel)
         out = predict_windows(
-            model, release, [args.split], threshold, topology, args.calibrate, args.growth_cap, args.floor
+            model,
+            release,
+            [args.split],
+            threshold,
+            topology,
+            args.calibrate,
+            args.growth_cap,
+            args.floor,
+            args.threshold,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(args.output, index=False)

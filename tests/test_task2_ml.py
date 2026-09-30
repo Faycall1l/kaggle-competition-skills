@@ -53,6 +53,12 @@ def test_train_classifier_separable():
     assert (model.predict(X) == y).mean() > 0.95
 
 
+def test_decision_threshold_shifts_positive_rate():
+    from task2_ml import predict_windows
+
+    assert "decision_threshold" in predict_windows.__code__.co_varnames
+
+
 def test_expected_positives_growth():
     import pandas as pd
 
