@@ -52,6 +52,10 @@ script plus its versioned runs.
   `src/task/task.py` must `sys.path.insert` its `parent.parent`, mirroring
   the v1 baseline builders. The run working directory is `/kaggle/working`
   and carries no import context.
+- `sys.path` edits do not propagate to subprocesses. Notebooks that fan out to
+  helper scripts must export the paths via `PYTHONPATH` in the environment,
+  otherwise identically-versioned code fails with `ModuleNotFoundError` in the
+  child while importing fine in the notebook.
 - Data sources attach via metadata; verify mounts with
   `Path('/kaggle/input').rglob(name)` — paths vary
   (`/kaggle/input/<slug>` vs `/kaggle/input/competitions/<slug>/`).
