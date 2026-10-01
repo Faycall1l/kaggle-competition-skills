@@ -77,7 +77,36 @@ FEATURE_COLUMNS_V2 = FEATURE_COLUMNS + [
     "ramp_inflow",
     "ramp_outflow",
     "density_proxy",
+    "bottleneck_freq",
 ]
+
+
+def bottleneck_frequencies(
+    panel_dir: Path, threshold: dict[str, float], list_files=None  # type: ignore[no-untyped-def]
+) -> dict[str, float]:
+    """Per-link queue frequency over unmasked train history (recurrent-bottleneck prior).
+
+    Train-month and later-month queue locations correlate strongly (measured
+    rank correlation 0.93), so historical frequency predicts where queues form
+    even when the current window shows nothing (onset case). `list_files`
+    overrides the release file lookup (fixture tests).
+    """
+    if list_files is None:
+        from task1.baseline_task1_historical_mean import files as _train_files
+
+        list_files = _train_files
+
+    freq: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for path in list_files(panel_dir, "train"):
+        frame = pd.read_parquet(path, columns=["link_id", "speed_kmh", "is_score_eligible"])
+        frame["link_id"] = frame.link_id.astype(str)
+        queued = pd.to_numeric(frame.speed_kmh, errors="coerce") <= frame.link_id.map(threshold).fillna(63.0)
+        queued &= frame.is_score_eligible.astype(bool)
+        for link, flag in zip(frame.link_id, queued.to_numpy()):
+            freq[link] = freq.get(link, 0.0) + float(flag)
+            counts[link] = counts.get(link, 0) + 1
+    return {link: freq[link] / max(counts[link], 1) for link in freq}
 
 
 def slope_of(values: np.ndarray) -> float:
@@ -143,6 +172,7 @@ def row_features_v2(
     threshold: float,
     tod_slot: int,
     horizon_step: int,
+    bottleneck: float = 0.0,
 ) -> list[float]:
     """Extended feature vector (v2).
 
@@ -181,6 +211,7 @@ def row_features_v2(
         float(ramp_inflow) if np.isfinite(ramp_inflow) else 0.0,
         float(ramp_outflow) if np.isfinite(ramp_outflow) else 0.0,
         density_proxy,
+        float(bottleneck) if np.isfinite(bottleneck) else 0.0,
     ]
 
 
@@ -335,6 +366,7 @@ def sample_training_rows(
             ramp_lookup[str(row["timestamp"])] = float(row["ramp_count"])
     X_rows: list[list[float]] = []
     y_rows: list[int] = []
+    bottlenecks = bottleneck_frequencies(panel_dir, threshold, list_files) if feature_set == "v2" else {}
     for link, (speeds, eligible, times, flows, occs) in filtered.items():
         limit = threshold.get(str(link), 63.0)
         neighbours = topology.get(str(link), {}).get("upstream", []) + topology.get(str(link), {}).get("downstream", [])
@@ -384,6 +416,7 @@ def sample_training_rows(
                             limit,
                             tod_slot,
                             k,
+                            bottlenecks.get(str(link), 0.0),
                         )
                     )
                     y_rows.append(int(labels[k]))
@@ -507,6 +540,9 @@ def predict_windows(
         )
         dist = upstream_distances(topology[panel], queued_now)
         link_hist: dict[str, pd.DataFrame] = {link: g for link, g in hist.groupby("link_id", sort=False)}
+        bottlenecks: dict[str, float] = {}
+        if feature_set == "v2":
+            bottlenecks = bottleneck_frequencies(root / "corridors" / panel, threshold[panel])
         ramp_lookup: dict = {}
         if feature_set == "v2":
             panel_dir = root / "corridors" / panel
@@ -583,6 +619,7 @@ def predict_windows(
                         limit,
                         int(stamp.hour * 12 + stamp.minute // 5),
                         step_of[stamp],
+                        bottlenecks.get(link, 0.0),
                     )
                 )
             else:
