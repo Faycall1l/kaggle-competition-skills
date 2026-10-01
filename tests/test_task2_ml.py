@@ -1,3 +1,4 @@
+import pickle
 import sys
 from pathlib import Path
 
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "examples" / "tr
 
 from task2_ml import (
     FEATURE_COLUMNS,
+    FEATURE_COLUMNS_V2,
     label_horizon,
     precision_recall_f1,
     row_features,
@@ -69,6 +71,24 @@ def test_train_classifier_balanced():
     y = np.array([0] * 90 + [1] * 10)
     model = train_classifier(X, y, class_weight="balanced")
     assert (model.predict(X[90:]) == 1).mean() > 0.5
+
+
+def test_model_payload_records_feature_set(tmp_path):
+    """The pickle carries its feature set so predict can refuse a mismatched run."""
+    rng = np.random.default_rng(2)
+    X = np.vstack([rng.normal(0, 1, (40, 10)), rng.normal(4, 1, (40, 10))])
+    y = np.array([0] * 40 + [1] * 40)
+    model = train_classifier(X, y)
+    path = tmp_path / "m.pkl"
+    with open(path, "wb") as handle:
+        pickle.dump({"model": model, "feature_set": "v1"}, handle)
+    with open(path, "rb") as handle:
+        payload = pickle.load(handle)
+    assert payload["feature_set"] == "v1"
+    assert payload["model"].n_features_in_ == 10
+    # a v2 run builds 21 columns, so the guard must trip for a 10-feature model
+    run_width = len(FEATURE_COLUMNS_V2)
+    assert payload["model"].n_features_in_ != run_width
 
 
 def test_bottleneck_frequencies(tmp_path):
@@ -213,7 +233,7 @@ def _fixture_panel_v2(tmp_path):
 
 
 def test_sample_v2_width_and_channels(tmp_path):
-    from task2_ml import FEATURE_COLUMNS_V2, sample_training_rows
+    from task2_ml import sample_training_rows
 
     panel = _fixture_panel_v2(tmp_path)
     topo = {"A": {"upstream": [], "downstream": ["B"]}, "B": {"upstream": ["A"], "downstream": []}}
