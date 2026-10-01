@@ -733,11 +733,24 @@ def main() -> None:
             model = train_classifier(X, y, class_weight=weight)
         args.model.parent.mkdir(parents=True, exist_ok=True)
         with open(args.model, "wb") as handle:
-            pickle.dump(model, handle)
+            pickle.dump({"model": model, "feature_set": args.feature_set}, handle)
         print(f"Wrote {args.model.resolve()}")
     else:
         with open(args.model, "rb") as model_handle:
-            model = pickle.load(model_handle)
+            payload = pickle.load(model_handle)
+        if isinstance(payload, dict) and "model" in payload:
+            model = payload["model"]
+            trained_with = payload.get("feature_set", args.feature_set)
+        else:
+            model = payload
+            trained_with = args.feature_set
+        trained_width = getattr(model, "n_features_in_", None)
+        run_width = len(FEATURE_COLUMNS_V2) if args.feature_set == "v2" else len(FEATURE_COLUMNS)
+        if trained_width is not None and trained_width != run_width:
+            raise SystemExit(
+                f"model expects {trained_width} features (trained with --feature-set {trained_with}), "
+                f"but --feature-set {args.feature_set} builds {run_width}"
+            )
         threshold, topology = {}, {}
         for panel in panels:
             threshold[panel], topology[panel] = panel_inputs(panel)
