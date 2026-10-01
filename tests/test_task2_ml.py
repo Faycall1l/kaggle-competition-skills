@@ -32,6 +32,16 @@ def test_label_horizon_threshold_rule():
     speeds = np.array([100.0, 50.0, 40.0])
     eligible = np.array([True, True, False])
     assert label_horizon(speeds, eligible, 60.0).tolist() == [0, 1, 0]
+    assert label_horizon(speeds, eligible, 60.0, mode="sustained").tolist() == [0, 0, 0]
+
+
+def test_label_horizon_sustained_drops_flicker_keeps_runs():
+    eligible = np.array([True, True, True])
+    flicker = np.array([100.0, 50.0, 100.0])
+    assert label_horizon(flicker, eligible, 60.0).tolist() == [0, 1, 0]
+    assert label_horizon(flicker, eligible, 60.0, mode="sustained").tolist() == [0, 0, 0]
+    run = np.array([100.0, 50.0, 40.0])
+    assert label_horizon(run, eligible, 60.0, mode="sustained").tolist() == [0, 0, 1]
 
 
 def test_upstream_distances():
