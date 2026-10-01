@@ -61,6 +61,39 @@ def test_train_classifier_balanced():
     assert (model.predict(X[90:]) == 1).mean() > 0.5
 
 
+def test_bottleneck_frequencies(tmp_path):
+    import pandas as pd
+
+    from task2_ml import bottleneck_frequencies
+
+    train = tmp_path / "train" / "mainline_states"
+    train.mkdir(parents=True)
+    base = pd.Timestamp("2030-06-01T00:00:00Z")
+    rows = []
+    for k in range(20):
+        rows.append(
+            {
+                "timestamp": (base + pd.Timedelta(minutes=5 * k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "link_id": "A",
+                "speed_kmh": 30.0 if k % 2 == 0 else 100.0,
+                "is_score_eligible": True,
+            }
+        )
+        rows.append(
+            {
+                "timestamp": (base + pd.Timedelta(minutes=5 * k)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "link_id": "B",
+                "speed_kmh": 100.0,
+                "is_score_eligible": True,
+            }
+        )
+    pd.DataFrame(rows).to_parquet(train / "day.parquet")
+    lister = lambda panel_dir, split: sorted((panel_dir / split / "mainline_states").glob("**/*.parquet"))
+    freq = bottleneck_frequencies(tmp_path, {"A": 60.0, "B": 60.0}, lister)
+    assert freq == {"A": 0.5, "B": 0.0}
+    assert bottleneck_frequencies(tmp_path / "missing", {}, lister) == {}
+
+
 def test_decision_threshold_shifts_positive_rate():
     from task2_ml import predict_windows
 
@@ -177,7 +210,7 @@ def test_sample_v2_width_and_channels(tmp_path):
     thresh = {"A": 60.0, "B": 60.0}
     lister = lambda panel_dir, split: sorted((panel_dir / split / "mainline_states").glob("**/*.parquet"))
     X, y = sample_training_rows(panel, thresh, topo, stride=6, max_origins=50, list_files=lister, feature_set="v2")
-    assert X.shape[1] == len(FEATURE_COLUMNS_V2) == 20
+    assert X.shape[1] == len(FEATURE_COLUMNS_V2) == 21
     assert set(y.tolist()) == {0, 1}
     flow_idx = FEATURE_COLUMNS_V2.index("mean_flow")
     assert X[:, flow_idx].max() > 1000.0
