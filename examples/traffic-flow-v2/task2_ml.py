@@ -684,6 +684,9 @@ def main() -> None:
     ap.add_argument("--floor", type=int, default=2)
     ap.add_argument("--feature-set", choices=["v1", "v2"], default="v1")
     ap.add_argument("--class-balanced", action="store_true", help="balanced class weights in training")
+    ap.add_argument(
+        "--label-mode", choices=["single", "sustained"], default="single", help="queue label rule (train mode)"
+    )
     args = ap.parse_args()
     read_queue_template, read_window_history, read_window_index, thresholds = _v1()
     from task1.baseline_task1_historical_mean import HERE as _here
@@ -711,6 +714,7 @@ def main() -> None:
                 before,
                 after,
                 feature_set=args.feature_set,
+                label_mode=args.label_mode,
             )
             for panel in panels
         ]
