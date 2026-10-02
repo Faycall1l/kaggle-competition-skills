@@ -84,3 +84,73 @@ def test_large_frame_is_fast():
     smooth_frame(frame, topo, iterations=3)
     elapsed = time.time() - start
     assert elapsed < 5.0, f"smoothing {len(frame)} rows took {elapsed:.1f}s"
+
+
+def test_fd_parameters_recomputes_kcrit(tmp_path):
+    """fd_parameters.csv is authoritative; k_crit is capacity/free_speed, not averaged."""
+    from conserve import load_fd_parameters
+
+    net = tmp_path / "network"
+    net.mkdir(parents=True)
+    pd.DataFrame(
+        {
+            "link_id": ["A", "A", "B"],
+            "free_speed_kmh": [110.0, 120.0, 100.0],
+            "capacity_vph": [6000.0, 6000.0, 5000.0],
+            "lanes": [4.0, 4.0, 3.0],
+        }
+    ).to_csv(net / "fd_parameters.csv", index=False)
+    params = load_fd_parameters(tmp_path)
+    v_free, capacity, k_crit, k_jam = params["A"]
+    assert v_free == 115.0, "free_speed averages over stations sharing the link"
+    assert k_crit == capacity / v_free, "k_crit recomputed, not averaged"
+    assert k_jam >= k_crit * 1.05
+    assert load_fd_parameters(tmp_path / "nope") == {}
+
+
+def test_fd_flow_zeroes_the_scorer_residual():
+    """The projection target must make S_FD's own residual vanish."""
+    from conserve import fd_flow
+
+    def scorer_resid(v, q, v_free, cap, k_crit, k_jam, lanes):
+        q_lane, k_lane = q / lanes, (q / max(v, 1e-9)) / lanes
+        c_l, k_l, j_l = cap / lanes, k_crit / lanes, k_jam / lanes
+        fd = v_free * k_lane if k_lane <= k_l else (c_l / max(j_l - k_l, 1e-9)) * max(j_l - k_lane, 0.0)
+        return q_lane - fd
+
+    for v_free, cap, k_crit, k_jam, lanes in [
+        (100.0, 6000.0, 60.0, 120.0, 1.0),
+        (100.0, 8000.0, 80.0, 160.0, 4.0),
+    ]:
+        for v in (80.0, 60.0, 40.0, 20.0):
+            q = fd_flow(np.array([v]), v_free, cap, k_crit, k_jam, lanes)[0]
+            assert abs(scorer_resid(v, q, v_free, cap, k_crit, k_jam, lanes)) < 1e-6
+
+
+def test_fd_flow_empty_road_at_free_speed():
+    from conserve import fd_flow
+
+    assert fd_flow(np.array([100.0]), 100.0, 6000.0, 60.0, 120.0)[0] == 0.0
+
+
+def test_fd_projection_pulls_flow_toward_diagram():
+    from conserve import project_onto_fd
+
+    frame = _frame()
+    frame["speed_kmh"] = 50.0
+    from conserve import fd_flow
+
+    params = {"A": (100.0, 6000.0, 60.0, 120.0), "B": (100.0, 6000.0, 60.0, 120.0), "C": (100.0, 6000.0, 60.0, 120.0)}
+    out = project_onto_fd(frame, params, alpha=0.15)
+    a = out.loc[out.link_id == "A", "flow_vph"].to_numpy()
+    target = fd_flow(np.array([50.0]), 100.0, 6000.0, 60.0, 120.0)[0]
+    assert target > 1000.0
+    assert (a > 1000.0).all()
+    assert abs(a[0] - (0.85 * 1000.0 + 0.15 * target)) < 1e-6
+
+
+def test_fd_projection_is_a_noop_when_disabled():
+    from conserve import project_onto_fd
+
+    frame = _frame()
+    assert project_onto_fd(frame, {"A": (100.0, 6000.0, 60.0, 120.0)}, alpha=0.0).equals(frame)
