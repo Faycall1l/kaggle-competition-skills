@@ -502,6 +502,43 @@ def _read_history_full(root: Path, splits: list[str]) -> pd.DataFrame:
     return pd.concat([pd.read_parquet(p) for p in parts], ignore_index=True)
 
 
+def apply_queue_window_rules(
+    labels: np.ndarray,
+    proba: np.ndarray,
+    timestamps: np.ndarray,
+    condition: str | None,
+    horizon: list[pd.Timestamp],
+    onset_rule: bool,
+    require_queue: bool,
+) -> np.ndarray:
+    """Apply the two organizer-published window rules to one window's labels.
+
+    First, in a ``queue_onset`` window the selector only ever places a queue at
+    the final step, so earlier steps are zeroed.
+
+    Second, the release contract sets ``requires_queue_in_horizon: true``:
+    every window really does contain a queue somewhere in its horizon. An
+    all-zero window is therefore a guaranteed IoU of 0, not a free pass, so the
+    single most likely cell is promoted. Onset windows are already restricted
+    to their final step by the rule above, so promotion cannot reintroduce an
+    early-step prediction.
+    """
+    labels = labels.astype(int).copy()
+    if onset_rule and condition == "queue_onset" and horizon:
+        final_step = horizon[-1]
+        allowed = timestamps == final_step
+        labels = np.where(allowed, labels, 0)
+    else:
+        allowed = np.ones(len(labels), dtype=bool)
+    if require_queue and len(labels) and labels.sum() == 0:
+        # Restrict the promotion to cells the onset rule still permits, so an
+        # onset window can never be refilled on a step that must stay empty.
+        candidates = np.flatnonzero(allowed)
+        if len(candidates):
+            labels[int(candidates[np.argmax(proba[candidates])])] = 1
+    return labels
+
+
 def predict_windows(
     model,  # type: ignore[no-untyped-def]
     root: Path,
@@ -514,6 +551,7 @@ def predict_windows(
     decision_threshold: float = 0.5,
     feature_set: str = "v1",
     onset_rule: bool = False,
+    require_queue: bool = True,
 ) -> pd.DataFrame:
     """Predict queue_pred for released windows. Returns v1-compatible rows.
 
@@ -670,20 +708,25 @@ def predict_windows(
                     )
                 )
             meta_rows.append((row.window_id, stamp, link))
-        preds = (model.predict_proba(np.array(feat_rows, dtype=float))[:, 1] >= decision_threshold).astype(int)
+        proba = model.predict_proba(np.array(feat_rows, dtype=float))[:, 1]
         frame = pd.DataFrame(meta_rows, columns=["window_id", "timestamp", "link_id"])
         if calibrate:
-            proba = model.predict_proba(np.array(feat_rows, dtype=float))[:, 1]
             expected = expected_positives(hist, threshold[panel], growth_cap, floor)
             order = np.argsort(-proba, kind="stable")
             labels = np.zeros(len(feat_rows), dtype=int)
             labels[order[: min(expected, len(feat_rows))]] = 1
             frame["queue_pred"] = labels
         else:
-            frame["queue_pred"] = [int(p) for p in preds]
-        if onset_rule and condition_of_window.get(str(window_id)) == "queue_onset" and horizon:
-            final_step = horizon[-1]
-            frame["queue_pred"] = np.where(frame.timestamp == final_step, frame["queue_pred"], 0)
+            frame["queue_pred"] = (proba >= decision_threshold).astype(int)
+        frame["queue_pred"] = apply_queue_window_rules(
+            frame["queue_pred"].to_numpy(),
+            proba,
+            frame["timestamp"].to_numpy(),
+            condition_of_window.get(str(window_id)),
+            horizon,
+            onset_rule,
+            require_queue,
+        )
         targets.append(frame)
     if not targets:
         raise RuntimeError("No queue ML rows were generated")
@@ -714,6 +757,13 @@ def main() -> None:
         "--onset-rule",
         action="store_true",
         help="force T+5..T+25 to 0 in queue_onset windows (organizer-published selector rule)",
+    )
+    ap.add_argument(
+        "--allow-empty-window",
+        dest="allow_empty_window",
+        action="store_true",
+        help="do not force a prediction when a window comes out empty "
+        "(off by default: the release requires a queue in every horizon)",
     )
     args = ap.parse_args()
     read_queue_template, read_window_history, read_window_index, thresholds = _v1()
@@ -794,6 +844,7 @@ def main() -> None:
             args.threshold,
             args.feature_set,
             args.onset_rule,
+            not args.allow_empty_window,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(args.output, index=False)
