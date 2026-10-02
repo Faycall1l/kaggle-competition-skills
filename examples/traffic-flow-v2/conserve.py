@@ -7,8 +7,11 @@ few iterations. Smoothing reduces spatial noise (small RMSE win) and improves
 the LWR conservation component of the physics score, which dominates it.
 
 Speeds are untouched: only flows enter conservation. Links without neighbours
-keep their values. Operates on a state submission file in place (writes a new
-file, never mutates the input).
+keep their values. Writes a new file; never mutates the input.
+
+The diffusion is a sparse matrix product over a dense (timestamp x link)
+grid, so cost is linear in cells rather than quadratic like per-cell frame
+writes.
 """
 
 from __future__ import annotations
@@ -18,6 +21,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+from scipy import sparse
 
 
 def load_topology(panel_dir: Path) -> dict[str, dict[str, list[str]]]:
@@ -37,23 +41,50 @@ def load_topology(panel_dir: Path) -> dict[str, dict[str, list[str]]]:
     return neighbours
 
 
+def _adjacency(links: list[str], neighbours: dict[str, dict[str, list[str]]]) -> sparse.csr_matrix:
+    """Symmetric adjacency matrix over `links` (1 where two links are neighbours)."""
+    index = {link: i for i, link in enumerate(links)}
+    rows: list[int] = []
+    cols: list[int] = []
+    for link, sides in neighbours.items():
+        if link not in index:
+            continue
+        for other in sides.get("upstream", []) + sides.get("downstream", []):
+            if other not in index or other == link:
+                continue
+            rows.append(index[link])
+            cols.append(index[other])
+    return sparse.coo_matrix((np.ones(len(rows)), (rows, cols)), shape=(len(links), len(links))).tocsr()
+
+
 def smooth_frame(
     frame: pd.DataFrame, neighbours: dict[str, dict[str, list[str]]], iterations: int = 3, blend: float = 0.5
 ) -> pd.DataFrame:
     """Diffuse flow_vph toward neighbour means, per timestamp. Returns a copy."""
     frame = frame.copy()
     frame["link_id"] = frame.link_id.astype(str)
+    links = sorted(set(frame.link_id))
+    matrix = _adjacency(links, neighbours)
+    if matrix.nnz == 0:
+        return frame
+    index = {link: i for i, link in enumerate(links)}
+    codes = frame.link_id.map(index).to_numpy()
+    stamps = pd.factorize(frame.timestamp, sort=False)[0]
+    n_stamps = int(stamps.max()) + 1 if len(stamps) else 0
+    grid = np.full((n_stamps, len(links)), np.nan)
+    grid[stamps, codes] = frame.flow_vph.to_numpy(dtype=float)
+    present = ~np.isnan(grid)
+    filled = np.where(present, grid, 0.0)
+    present_f = present.astype(float)
     for _ in range(iterations):
-        updates: dict[int, float] = {}
-        for stamp, group in frame.groupby("timestamp", sort=False):
-            values = dict(zip(group.link_id.astype(str), group.flow_vph.astype(float)))
-            for pos, link in zip(group.index, group.link_id.astype(str)):
-                pool = neighbours.get(link, {}).get("upstream", []) + neighbours.get(link, {}).get("downstream", [])
-                known = [values[other] for other in pool if other in values and np.isfinite(values[other])]
-                if known:
-                    updates[pos] = (1.0 - blend) * values[link] + blend * float(np.mean(known))
-        for pos, value in updates.items():
-            frame.at[pos, "flow_vph"] = max(value, 0.0)
+        neighbour_sum = filled @ matrix.T
+        neighbour_count = present_f @ matrix.T
+        with np.errstate(invalid="ignore", divide="ignore"):
+            neighbour_mean = np.where(neighbour_count > 0, neighbour_sum / neighbour_count, grid)
+        updated = (1.0 - blend) * grid + blend * neighbour_mean
+        # cells with no observed neighbours keep their own value
+        grid = np.where(neighbour_count > 0, updated, grid)
+    frame["flow_vph"] = np.clip(grid[stamps, codes], 0.0, None)
     return frame
 
 
