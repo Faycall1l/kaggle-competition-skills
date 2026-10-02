@@ -544,6 +544,15 @@ def predict_windows(
     )
     history["link_id"] = history.link_id.astype(str)
     history["timestamp"] = pd.to_datetime(history.timestamp, utc=True)
+    # Bottleneck priors are a property of the panel, not of the window. Computed
+    # once per panel: inside the window loop this re-read every train parquet
+    # file for every window and dominated predict runtime.
+    panel_bottlenecks: dict[str, dict[str, float]] = {}
+    if feature_set == "v2":
+        for panel_name in sorted({str(p) for p in panel_of_window.values() if p is not None}):
+            panel_bottlenecks[panel_name] = bottleneck_frequencies(
+                root / "corridors" / panel_name, threshold[panel_name]
+            )
     targets = []
     for window_id, group in template.groupby("window_id", sort=True):
         panel = panel_of_window.get(str(window_id))
@@ -568,9 +577,7 @@ def predict_windows(
         )
         dist = upstream_distances(topology[panel], queued_now)
         link_hist: dict[str, pd.DataFrame] = {link: g for link, g in hist.groupby("link_id", sort=False)}
-        bottlenecks: dict[str, float] = {}
-        if feature_set == "v2":
-            bottlenecks = bottleneck_frequencies(root / "corridors" / panel, threshold[panel])
+        bottlenecks: dict[str, float] = panel_bottlenecks.get(str(panel), {})
         ramp_lookup: dict = {}
         if feature_set == "v2":
             panel_dir = root / "corridors" / panel
