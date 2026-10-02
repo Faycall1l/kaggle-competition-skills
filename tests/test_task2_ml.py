@@ -133,12 +133,57 @@ def test_decision_threshold_shifts_positive_rate():
 
 def test_onset_rule_zeros_early_steps_only_for_onset_windows():
     """Organizer rule: in queue_onset windows the queue can only be at T+30."""
-    from task2_ml import predict_windows
+    from task2_ml import apply_queue_window_rules
 
-    assert "onset_rule" in predict_windows.__code__.co_varnames
-    source = inspect.getsource(predict_windows)
-    assert 'condition_of_window.get(str(window_id)) == "queue_onset"' in source
-    assert "final_step = horizon[-1]" in source
+    horizon = [pd.Timestamp(f"2026-01-01 07:{m:02d}", tz="UTC") for m in (5, 10, 15, 20, 25, 30)]
+    labels = np.ones(len(horizon) * 2, dtype=int)
+    proba = np.full(len(horizon) * 2, 0.4)
+    stamps = np.repeat(np.array(horizon, dtype=object), 2)
+
+    onset = apply_queue_window_rules(labels, proba, stamps, "queue_onset", horizon, True, False)
+    assert set(np.unique(onset)) == {0, 1}
+    assert onset[stamps == horizon[-1]].all()
+    assert onset[stamps != horizon[-1]].sum() == 0
+
+    ongoing = apply_queue_window_rules(labels, proba, stamps, "queue_ongoing", horizon, True, False)
+    assert ongoing.sum() == len(labels)
+
+
+def test_onset_rule_off_leaves_every_step_alone():
+    from task2_ml import apply_queue_window_rules
+
+    horizon = [pd.Timestamp(f"2026-01-01 07:{m:02d}", tz="UTC") for m in (5, 30)]
+    labels = np.ones(2, dtype=int)
+    stamps = np.array(horizon, dtype=object)
+    out = apply_queue_window_rules(labels, np.array([0.9, 0.1]), stamps, "queue_onset", horizon, False, False)
+    assert out.tolist() == [1, 1]
+
+
+def test_empty_window_is_promoted_because_every_horizon_has_a_queue():
+    """requires_queue_in_horizon: true, so an all-zero window is a guaranteed 0."""
+    from task2_ml import apply_queue_window_rules
+
+    horizon = [pd.Timestamp("2026-01-01 07:30", tz="UTC")]
+    proba = np.array([0.1, 0.7, 0.3])
+    stamps = np.repeat(np.array(horizon, dtype=object), 3)
+
+    out = apply_queue_window_rules(np.zeros(3, dtype=int), proba, stamps, "queue_ongoing", horizon, True, True)
+    assert out.tolist() == [0, 1, 0]
+
+    allowed = apply_queue_window_rules(np.zeros(3, dtype=int), proba, stamps, "queue_ongoing", horizon, True, False)
+    assert allowed.sum() == 0
+
+
+def test_promotion_in_onset_window_lands_on_the_final_step():
+    from task2_ml import apply_queue_window_rules
+
+    horizon = [pd.Timestamp(f"2026-01-01 07:{m:02d}", tz="UTC") for m in (5, 30)]
+    # Highest probability sits on the early step, which the onset rule forbids.
+    proba = np.array([0.9, 0.4, 0.8, 0.2])
+    stamps = np.array([horizon[0], horizon[0], horizon[1], horizon[1]], dtype=object)
+
+    out = apply_queue_window_rules(np.zeros(4, dtype=int), proba, stamps, "queue_onset", horizon, True, True)
+    assert out.tolist() == [0, 0, 1, 0]
 
 
 def test_expected_positives_growth():
