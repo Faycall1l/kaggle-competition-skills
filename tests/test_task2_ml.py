@@ -1,3 +1,4 @@
+import inspect
 import pickle
 import sys
 from pathlib import Path
@@ -128,6 +129,16 @@ def test_decision_threshold_shifts_positive_rate():
     from task2_ml import predict_windows
 
     assert "decision_threshold" in predict_windows.__code__.co_varnames
+
+
+def test_onset_rule_zeros_early_steps_only_for_onset_windows():
+    """Organizer rule: in queue_onset windows the queue can only be at T+30."""
+    from task2_ml import predict_windows
+
+    assert "onset_rule" in predict_windows.__code__.co_varnames
+    source = inspect.getsource(predict_windows)
+    assert 'condition_of_window.get(str(window_id)) == "queue_onset"' in source
+    assert "final_step = horizon[-1]" in source
 
 
 def test_expected_positives_growth():

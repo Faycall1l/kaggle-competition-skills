@@ -513,6 +513,7 @@ def predict_windows(
     floor: int = 2,
     decision_threshold: float = 0.5,
     feature_set: str = "v1",
+    onset_rule: bool = False,
 ) -> pd.DataFrame:
     """Predict queue_pred for released windows. Returns v1-compatible rows.
 
@@ -521,6 +522,15 @@ def predict_windows(
     history (current queued count scaled by the now-vs-6-steps-ago ratio,
     clamped, with a floor because every scored window contains queue), and
     the top-K cells by predicted probability are labeled 1.
+
+    onset_rule applies the window-selector regularity the organizer published
+    and explicitly permitted (discussion 742350): for windows marked
+    `queue_onset`, the selector keeps the earliest origin whose horizon
+    contains a queue, so the queue lands on the final step by construction and
+    T+5..T+25 are empty in all 120 onset windows. Under the space-time IoU that
+    Task 2 is scored with, spending predictions on those five steps is pure
+    loss, so they are forced to 0. `queue_ongoing` windows are untouched: their
+    definition already puts a queue in the published history.
     """
     from task2.build_task2_persistence_submission import read_queue_template
 
@@ -529,6 +539,9 @@ def predict_windows(
     history = _read_history_full(root, splits) if feature_set == "v2" else read_window_history(root, splits)
     template = read_queue_template(root, splits)
     panel_of_window = windows.set_index("window_id").panel.astype(str).to_dict()
+    condition_of_window = (
+        windows.set_index("window_id").condition.astype(str).to_dict() if "condition" in windows.columns else {}
+    )
     history["link_id"] = history.link_id.astype(str)
     history["timestamp"] = pd.to_datetime(history.timestamp, utc=True)
     targets = []
@@ -661,6 +674,9 @@ def predict_windows(
             frame["queue_pred"] = labels
         else:
             frame["queue_pred"] = [int(p) for p in preds]
+        if onset_rule and condition_of_window.get(str(window_id)) == "queue_onset" and horizon:
+            final_step = horizon[-1]
+            frame["queue_pred"] = np.where(frame.timestamp == final_step, frame["queue_pred"], 0)
         targets.append(frame)
     if not targets:
         raise RuntimeError("No queue ML rows were generated")
@@ -686,6 +702,11 @@ def main() -> None:
     ap.add_argument("--class-balanced", action="store_true", help="balanced class weights in training")
     ap.add_argument(
         "--label-mode", choices=["single", "sustained"], default="single", help="queue label rule (train mode)"
+    )
+    ap.add_argument(
+        "--onset-rule",
+        action="store_true",
+        help="force T+5..T+25 to 0 in queue_onset windows (organizer-published selector rule)",
     )
     args = ap.parse_args()
     read_queue_template, read_window_history, read_window_index, thresholds = _v1()
@@ -765,6 +786,7 @@ def main() -> None:
             args.floor,
             args.threshold,
             args.feature_set,
+            args.onset_rule,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         out.to_csv(args.output, index=False)

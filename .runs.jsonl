@@ -1,0 +1,2 @@
+{"type": "attempt", "id": 1, "at": "2026-10-02T11:10:46+00:00", "competition": "2026-ieee-big-data-traffic-flow-bench", "method": "v6 sustained-queue-labels + v2 features + conservation smoothing", "kernel": "faycal00/traffic-v6", "version": 6, "detail": "balanced weights, feature-set v2, --label-mode sustained, 3x0.5 topology diffusion on flows"}
+{"type": "result", "id": 1, "at": "2026-10-02T11:11:21+00:00", "score": 0.69519, "status": "complete", "submission": "56772416"}
