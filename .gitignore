@@ -26,3 +26,4 @@ working/
 .idea/
 .vscode/
 *.swp
+.runs.jsonl
