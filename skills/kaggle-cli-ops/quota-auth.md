@@ -32,8 +32,17 @@ Rules:
 
 ## Quota preflight
 
-- `kaggle quota [--format json]` shows weekly GPU/TPU allowance. Check before
-  every push; a push without quota queues or fails remotely.
+- `kaggle quota [--format json]` shows weekly GPU/TPU allowance (~30h/week
+  combined GPU+TPU budget, resets weekly). Check before every push; a push
+  without quota queues or fails remotely. `-v/--csv` and `--format` are
+  mutually exclusive.
+- Session caps are separate from weekly quota: 12h max per CPU/GPU session,
+  9h per TPU session. Size `--timeout` and checkpointing accordingly.
+- Current accelerator shapes: `NvidiaTeslaT4` (T4 x2, default GPU),
+  `NvidiaTeslaA100`, `NvidiaL4`, `TpuV5E8`, `TpuV6E8`. Retired shapes
+  (`NvidiaTeslaP100`, `TpuV38`, `Tpu1VmV38`, `TpuV232`, `TpuV2256`) warn on
+  upstream main and run on a replacement — do not request them. The P100
+  option was retired platform-side.
 - `kaggle competitions submission-limits <slug> [--json]` shows remaining
   daily submissions. Check before every submit.
 - State both costs to the user and require explicit confirmation before
