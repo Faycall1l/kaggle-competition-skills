@@ -200,3 +200,9 @@ def test_push_no_wait(monkeypatch, tmp_path):
         "kernel": "owner/slug",
         "version": 4,
     }
+
+
+def test_push_version_retired_accelerator_warns(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(kernel_push, "run_cli", lambda cmd, timeout: (0, "Kernel version 5 ok", ""))
+    assert push_version(tmp_path, timeout=None, accelerator="NvidiaTeslaP100", no_run=False) == 5
+    assert "retired" in capsys.readouterr().err

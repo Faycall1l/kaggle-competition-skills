@@ -94,8 +94,9 @@ def check_cli_version() -> dict:
     lines = [line for line in out.strip().splitlines() if line.startswith("Kaggle")]
     version = lines[0] if lines else out.strip().splitlines()[0] if out.strip() else "unknown"
     floor = (2, 2, 4)
+    match = VERSION_RE.search(version)
     try:
-        nums = tuple(int(p) for p in VERSION_RE.search(version).group(1).split(".")) if VERSION_RE.search(version) else ()
+        nums = tuple(int(p) for p in match.group(1).split(".")) if match else ()
     except ValueError:
         nums = ()
     if nums and nums < floor:

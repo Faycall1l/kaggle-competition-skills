@@ -96,3 +96,9 @@ def test_quota_cli_failure(monkeypatch):
     monkeypatch.setattr(doctor, "run_cli", lambda args, timeout=60: (1, "", "403 Forbidden"))
     result = check_quota()
     assert result["status"] == "error" and "403" in result["detail"]
+
+
+def test_cli_version_old_warns(monkeypatch):
+    monkeypatch.setattr(doctor, "run_cli", lambda args, timeout=60: (0, "Kaggle CLI 2.1.0\n", ""))
+    result = check_cli_version()
+    assert result["status"] == "warn" and "2.2.4" in result["detail"]
