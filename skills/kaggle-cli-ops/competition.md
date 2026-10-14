@@ -14,20 +14,28 @@ Discovery, download, submission, and leaderboard inspection via
 
 | Task | Command |
 |---|---|
-| List competitions | `kaggle competitions list [--group entered] [--category featured] [--sort-by latestDeadline]` |
-| List competition files | `kaggle competitions files -c <slug> [-v|--csv] [--page-size N]` |
+| List competitions | `kaggle competitions list [--group entered] [--category featured] [--sort-by latestDeadline] [--page-size N] [--page-token T] [-v\|--format ...]` |
+| List competition files | `kaggle competitions files -c <slug> [-v\|--format ...] [--page-size N] [--page-token T]` |
 | Download all files | `kaggle competitions download -c <slug> [-p PATH] [--force] [--unzip]` |
 | Download one file | `kaggle competitions download -c <slug> -f <file> [-p PATH]` |
 | Submit predictions | `kaggle competitions submit <slug> -f <file> -m <message>` |
 | Submit from kernel output (code competitions) | `kaggle competitions submit <slug> -k <owner/slug> -v <N> -f <output> -m <message>` |
 | Wait for score | append `--wait [SECONDS] [--poll-interval N]` |
-| List submissions | `kaggle competitions submissions -c <slug> [-v|--csv]` |
+| List submissions | `kaggle competitions submissions -c <slug> [-v\|--format ...] [--page-size N] [--page-token T]` |
+| Single submission status/score | `kaggle competitions submission <ref>` (upstream main; absent from pip 2.2.4) |
+| Download a submitted file | `kaggle competitions submission-download <id> [-p PATH]` (upstream main; absent from pip 2.2.4) |
 | Remaining submission allowance | `kaggle competitions submission-limits <slug> [--json]` |
-| Leaderboard | `kaggle competitions leaderboard <slug> [-s|--show] [-d|--download]` |
+| Leaderboard | `kaggle competitions leaderboard <slug> [-s\|--show] [-d\|--download] [-v\|--format ...] [--page-size N] [--page-token T]` |
+| Team submissions (simulations) | `kaggle competitions team-submissions <team_id>` |
 
 Flag availability varies by release; confirm with `--help` on the installed
-version. `--unzip` (download) and `--wait`/`--poll-interval` (submit) exist on
-upstream main but are absent from pip release 2.2.4.
+version. Verified against pip release 2.2.4 (latest, 23 Jul 2026):
+`--unzip` (download), `--wait`/`--poll-interval` (submit),
+`submission <ref>`, `submission-download`, and unified `kaggle search` exist
+on upstream main but are absent from 2.2.4. `-v/--csv` and `--format` are
+mutually exclusive everywhere (`[-v | --format]`). Use `kaggle --help` for
+examples and the global `--debug` flag (main) for full tracebacks on
+403/404/429/5xx errors.
 
 ## Download behavior
 
@@ -42,8 +50,11 @@ upstream main but are absent from pip release 2.2.4.
 
 - File competitions: `-f` is a local path. Code competitions: `-f` is the
   output filename produced by kernel version `-v` of `-k <owner/slug>`.
-- On success the CLI prints `Submission ref:`; poll status with
-  `kaggle competitions submissions -c <slug>`.
+- On success upstream main prints `Submission ref:`; pip 2.2.4 does not —
+  `scripts/comp_submit.py` falls back to matching the description message in
+  the submissions list. Poll status with
+  `kaggle competitions submissions -c <slug>` (or singular
+  `submission <ref>` on main, which also shows the failure reason).
 - `--wait` blocks until scored (default cap 12h, bounded by notebook runtime)
   and exits non-zero on scoring failure or timeout. `--poll-interval` minimum
   5s. On releases without `--wait`, poll with `submissions` instead.
