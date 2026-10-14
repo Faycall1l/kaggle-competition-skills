@@ -26,6 +26,7 @@ metadata: {"author": "Faycall1l", "version": "0.1.0"}
 | Task | Reference |
 |---|---|
 | Choose folds, implement metric, check leakage | `references/validation.md` |
+| Sensor-network imputation and forecasting ladders | `references/spatiotemporal-imputation.md` |
 | Verify a submission is ready | `references/submission-gates.md` |
 
 ## Instructions
