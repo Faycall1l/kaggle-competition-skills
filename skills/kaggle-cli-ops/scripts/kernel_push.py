@@ -20,6 +20,7 @@ from common import BlockedError, UsageError, backoff_delays, emit, extract_json,
 TERMINAL_STATES = ("COMPLETE", "ERROR", "CANCELLED")
 SLUG_MISMATCH_MARKERS = ("wrong kernel slug", "kernels.get")
 VERSION_RE = re.compile(r"Kernel version (\d+)")
+RETIRED_ACCELERATORS = frozenset({"NvidiaTeslaP100", "TpuV38", "Tpu1VmV38", "TpuV232", "TpuV2256"})
 
 _push_help_cache: str | None = None
 
@@ -123,6 +124,8 @@ def read_kernel_slug(kernel_dir: Path) -> str:
 
 def push_version(kernel_dir: Path, timeout: int | None, accelerator: str | None, no_run: bool) -> int:
     """Run the CLI push and return the new version number."""
+    if accelerator in RETIRED_ACCELERATORS:
+        log(f"WARNING: accelerator {accelerator} is retired; server runs a replacement shape instead")
     cmd = ["kernels", "push", "-p", str(kernel_dir)]
     if timeout is not None:
         cmd += ["--timeout", str(timeout)]

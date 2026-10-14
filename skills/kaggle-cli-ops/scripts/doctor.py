@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 import sys
 from pathlib import Path
@@ -21,6 +22,7 @@ KAGGLE_DIR_NAME = ".kaggle"
 API_TOKEN_ENV = "KAGGLE_API_TOKEN"
 LEGACY_USER_ENV = "KAGGLE_USERNAME"
 LEGACY_KEY_ENV = "KAGGLE_KEY"
+VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -91,6 +93,13 @@ def check_cli_version() -> dict:
         return {"name": "cli", "status": "error", "detail": (err or out).strip()[-200:]}
     lines = [line for line in out.strip().splitlines() if line.startswith("Kaggle")]
     version = lines[0] if lines else out.strip().splitlines()[0] if out.strip() else "unknown"
+    floor = (2, 2, 4)
+    try:
+        nums = tuple(int(p) for p in VERSION_RE.search(version).group(1).split(".")) if VERSION_RE.search(version) else ()
+    except ValueError:
+        nums = ()
+    if nums and nums < floor:
+        return {"name": "cli", "status": "warn", "version": version, "detail": "older than tested floor 2.2.4; upgrade"}
     return {"name": "cli", "status": "ok", "version": version}
 
 
