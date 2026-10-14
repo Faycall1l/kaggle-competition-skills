@@ -3,7 +3,7 @@ name: kaggle-cli-ops
 description: "Kaggle CLI competition operations: download data, push/monitor kernels, fetch logs/output, submit and poll. Use when the user mentions Kaggle CLI commands, kaggle competitions/kernels workflows, notebook push/submit/poll, or a kaggle.com/c/... URL tied to CLI execution."
 license: MIT
 compatibility: "Python 3.11+, kaggle>=2.2.4; KAGGLE_API_TOKEN required for writes"
-metadata: {"author": "Faycall1l", "version": "0.1.0"}
+metadata: {"author": "Faycall1l", "version": "0.1.1"}
 ---
 
 # Kaggle CLI Ops

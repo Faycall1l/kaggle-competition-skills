@@ -3,7 +3,7 @@ name: kaggle-playbook
 description: "Modeling judgment for Kaggle competitions: validation design, baseline ordering, and submission acceptance criteria. Use when choosing folds, metrics, model architectures, or deciding whether a result is submittable. Pairs with kaggle-cli-ops for execution."
 license: MIT
 compatibility: "No runtime requirements; methodology guidance only"
-metadata: {"author": "Faycall1l", "version": "0.1.0"}
+metadata: {"author": "Faycall1l", "version": "0.1.1"}
 ---
 
 # Kaggle Playbook

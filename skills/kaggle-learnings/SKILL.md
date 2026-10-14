@@ -3,7 +3,7 @@ name: kaggle-learnings
 description: "File-based learning memory for Kaggle work: capture durable findings, recall relevant ones before acting, archive stale entries. Use when the user says capture/recall/review learnings, or before non-trivial competition decisions."
 license: MIT
 compatibility: "Python 3.11+ for scripts/kln.py; markdown only otherwise"
-metadata: {"author": "Faycall1l", "version": "0.1.0"}
+metadata: {"author": "Faycall1l", "version": "0.1.1"}
 ---
 
 # Kaggle Learnings
