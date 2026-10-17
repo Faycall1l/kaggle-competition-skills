@@ -1,0 +1,6 @@
+# Queue label noise real but small (2.6% overall, 17% near-threshold); does not explain 0.55 precision cap
+Date: 2026-10-17
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: Measured raw-vs-denoised (per-link temporal rolling median) queue label divergence on 4 panels of unmasked train (30-day window). macro flip rate 0.0261 overall; 0.1712 among cells within 5 km/h of v_cut; positive rate nearly identical (pos_raw 0.1497 vs pos_den 0.1473) so denoising stabilises the threshold boundary without shifting which cells are queued. The v5 comment's claim that raw noisy labels are a big error source is only mildly true: 2.6% label noise is far too small to explain precision 0.55 at recall 0.99. The precision cap is genuine model mislocalisation (the model knows queue is somewhere but not which cells) - an intrinsic predictability limit of forecasting queue from past features, NOT label hygiene. v5 denoised-FEATURES might still add signal but the denoised-LABEL fix is not the bottleneck.
+Evidence: v47 queuediv: macro_flip_rate=0.0261 macro_flip_near=0.1712 macro_pos_raw=0.1497 macro_pos_den=0.1473; v41 cell precision 0.548 recall 0.988; v44 threshold flat 0.35-0.45
+Applies when: 
