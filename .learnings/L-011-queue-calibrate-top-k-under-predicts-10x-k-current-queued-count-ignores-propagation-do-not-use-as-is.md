@@ -1,0 +1,6 @@
+# Queue --calibrate top-K under-predicts ~10x (K=current queued count ignores propagation); do NOT use as-is
+Date: 2026-10-18
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: v48-qcalib ran the champion pipeline with --calibrate (per-window top-K, K = queued_now * clamped growth, floor 4). Diagnostic: global pos_rate 0.0096, per-window n_pos median 4 mean 10.5 (vs champion flat-threshold rate ~0.10 ~108/window). The expected_positives heuristic sizes K from the CURRENTLY-queued link count, but queue PROPAGATES far beyond what is queued at the history boundary, so K is ~10x too small -> recall collapse -> predicted S_queue ~0.15 vs champion 0.686 (~-0.16 overall). v44 already showed raising the threshold (fewer positives) hurts windowIoU; calibrate overshoots far past the optimum. Decision-rule space for queue is therefore EXHAUSTED (flat threshold optimal, count-adaptive miscalibrated). Remaining untried axis is model-side CAPACITY (train_classifier docstring: 'capacity is the remaining one to try').
+Evidence: v48 diag: QUEUE windows 160 pos_rate 0.0096, n_pos median 4 mean 10.5 max 215; champion flat 0.35 posrate 0.1071 (v43); v44 threshold sweep flat 0.5261-0.5310 for thr 0.30-0.65, declines above 0.40
+Applies when: 
