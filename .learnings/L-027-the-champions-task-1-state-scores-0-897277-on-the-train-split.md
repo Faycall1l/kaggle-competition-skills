@@ -1,0 +1,6 @@
+# The champion's Task 1 state scores S_state = 0.897277 on the train split (historical-mean baseline 0.732028)
+Date: 2026-10-22
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: The official `score_task1.py` run on the train split (the unmasked truth is available there) puts the champion's reconstruction - task1_v2 with `--half-window 12` followed by the conserve smoothing (5 iterations, blend 0.5, alpha 0) - at S_state = 0.897277, against 0.732028 for the shipped historical-mean baseline. This pins the champion's state term: 0.35 * 0.897277 = 0.314 of the 0.77944 overall, leaving 0.30*S_queue + 0.15*S_physics = 0.4654 for the queue and physics terms. It also gives the state work a real, cheap local instrument: the train split is scored by the official scorer with no truth leakage, so a state change can be measured exactly (the reconstruction is deterministic, so the train-split score is not an estimate but a measurement of the same code path that runs on validation/private).
+Evidence: kernel faycal00/traffic-train-state-score log: "Overall S_state = 0.897277" for t_hw12.csv and "Overall S_state = 0.732028" for t1_hm_train.csv
+Applies when: a competition ships the truth for one split - use it as a measurement instrument for every deterministic step of the pipeline instead of inferring scores from the leaderboard
