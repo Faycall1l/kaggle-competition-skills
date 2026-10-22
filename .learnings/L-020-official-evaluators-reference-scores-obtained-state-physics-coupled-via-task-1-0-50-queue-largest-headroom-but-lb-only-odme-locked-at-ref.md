@@ -1,0 +1,6 @@
+# Official evaluators + reference scores obtained. State+physics coupled via Task 1 = 0.50; queue largest headroom but LB-only; ODME locked at ref
+Date: 2026-10-21
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: Cloned github.com/jacky850/trafficflowbench-public (evaluators + baselines + spec). Weights 0.35/0.30/0.15/0.20. Task 3 has NO separate submission - scored on Task 1 rows (couples state+physics to 0.50). Reference validation table: S_state naive 0.6929/perfect 1.0; S_queue 0.3017/1.0; S_physics 0.3549/0.9636 (meas noise caps ~0.95); S_ODME 0.8359/1.0 (naive total 0.5534, perfect 0.9945). LOCAL MEASURABILITY: score_task1.py runs on train and discriminates. score_task3.py runs but meaningless locally (organizer boundary flux withheld, topology fallback makes S_LWR ~0 for everyone - even perfect scores 0.3301 locally vs 0.9598 with organizer flux). score_task2.py cannot run locally on any split (labels withheld). score_task4.py gives S_link only. Physics lever per docs: 'reconstructing in a way that conserves vehicles between neighbouring links'. Only locally measurable high-weight lever is Task 1 state (0.35 + 0.15). Queue has largest headroom (0.21 potential) but must be LB-only.
+Evidence: 
+Applies when: 

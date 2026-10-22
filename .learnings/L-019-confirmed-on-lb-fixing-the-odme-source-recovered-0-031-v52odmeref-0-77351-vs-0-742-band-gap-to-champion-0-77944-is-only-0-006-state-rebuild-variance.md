@@ -1,0 +1,6 @@
+# CONFIRMED on LB: fixing the ODME source recovered +0.031; v52odmeref=0.77351 vs 0.742 band. Gap to champion 0.77944 is only 0.006 (state rebuild variance)
+Date: 2026-10-21
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: LB confirmation of the ODME root cause (L-017/L-018). v52odmeref (exact v26 champion recipe, ODME rebuilt from the released public_reference instead of the frozen fixedart ODME) scored 0.77351 (ref 57460502). vs the four wrong-ODME submissions at 0.74171-0.74440, that is +0.031 (and +0.030 vs the best wrong-ODME point). So the ODME source was indeed worth ~0.03 overall, consistent with a 20%-weight task swinging ~0.15. Remaining gap to champion v32b 0.77944 is only 0.006 - attributable to small state-field differences in my rebuild (sum_speed 749473001.76 in my rebuild vs 749951310.68 in the v26 kernel's own sub_v26a.csv, ~0.06%), NOT to ODME (my ODME rows now match the released reference exactly, sum 1568165.45). Practical consequence: the '0.742 ceiling' was a wrong task-4 FILE, not a modelling limit. All earlier flat queue/physics results measured on that broken merge are void. My real pipeline score is ~0.773-0.779. Next: the released public_reference IS the official ODME and is optimal, so ODME (20%) has no headroom; set it and re-measure state/queue/physics on the CORRECT pipeline.
+Evidence: 
+Applies when: 
