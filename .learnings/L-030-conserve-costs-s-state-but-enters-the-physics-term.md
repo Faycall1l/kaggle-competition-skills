@@ -1,0 +1,7 @@
+# The conserve smoothing costs a hair of S_state and a real slice of RMSE, yet it was LB-positive: judge state changes with it applied
+
+Date: 2026-10-25
+Competition: 2026-ieee-big-data-traffic-flow-bench
+Finding: The conservation diffusion (5 iterations, blend 0.5, alpha 0) *lowers* S_state on held-out days: 0.9088 -> 0.9079 for the shipped rule and 0.9350 -> 0.9333 for the model. Its flow error grows by 2-19% depending on regime. It nevertheless earned ~+0.035 on the leaderboard when it was introduced, because the Task 3 physics score's LWR term is a conservation residual, not an RMSE. Consequence for measurement discipline: any state change has to be evaluated with conserve applied, and its expected leaderboard effect has to be stated as 0.35*dS_state plus an unmeasurable physics term - locally the physics term can only be bounded, never measured (the organizer's boundary flux is unpublished and the topology fallback saturates E_LWR at ~1.0).
+Evidence: D12_I5_N 2030-06-21..30 with the official arithmetic: champion 0.9088 raw / 0.9079 conserve; model 0.9350 raw / 0.9333 conserve. Per-regime flow RMSE, champion R2: 49.9 -> 53.0; model R2: 34.0 -> 40.5.
+Applies when: choosing post-processing for a scored flow field that also feeds a conservation-based physics metric. Do not drop a post-pass because it hurts the reconstruction RMSE; check which term of the overall score the residual actually enters.
